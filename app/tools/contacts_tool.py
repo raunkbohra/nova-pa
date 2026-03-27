@@ -5,10 +5,8 @@ List recent contacts or read a specific conversation thread.
 
 import logging
 from app.tools.base import BaseTool, ToolResult
-from app.memory import (
-    get_recent_contacts, search_contact_by_name,
-    get_external_thread, AsyncSessionLocal
-)
+from app.memory import get_recent_contacts, search_contact_by_name, get_external_thread
+import app.memory as _db
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +72,7 @@ Examples:
 
     async def _list_recent(self, limit: int = 10, **kwargs) -> ToolResult:
         limit = min(limit, 20)
-        async with AsyncSessionLocal() as session:
+        async with _db.AsyncSessionLocal() as session:
             contacts = await get_recent_contacts(session, limit)
 
         if not contacts:
@@ -111,7 +109,7 @@ Examples:
                 error="Provide either 'name' or 'phone' to read a thread"
             )
 
-        async with AsyncSessionLocal() as session:
+        async with _db.AsyncSessionLocal() as session:
             if not phone and name:
                 contact = await search_contact_by_name(session, name)
                 if not contact:

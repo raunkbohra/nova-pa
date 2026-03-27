@@ -6,7 +6,8 @@ Save, retrieve, search notes with tags.
 import logging
 from typing import List
 from app.tools.base import BaseTool, ToolResult
-from app.memory import save_note, search_notes, AsyncSessionLocal
+from app.memory import save_note, search_notes
+import app.memory as _db
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ Examples:
         if not title:
             title = content[:50] + ("..." if len(content) > 50 else "")
 
-        async with AsyncSessionLocal() as session:
+        async with _db.AsyncSessionLocal() as session:
             note = await save_note(session, title, content, tags)
 
         return ToolResult(
@@ -119,7 +120,7 @@ Examples:
                 error="Query is required to search notes"
             )
 
-        async with AsyncSessionLocal() as session:
+        async with _db.AsyncSessionLocal() as session:
             notes = await search_notes(session, query)
 
         if not notes:

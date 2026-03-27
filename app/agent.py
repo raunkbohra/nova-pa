@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.memory import (
     save_message, get_messages, get_context, set_context,
-    save_external_message, get_external_thread, save_usage, AsyncSessionLocal
+    save_external_message, get_external_thread, save_usage
 )
+import app.memory as _db
 from app.tools import get_claude_tools, get_tool
 
 logger = logging.getLogger(__name__)
@@ -252,7 +253,7 @@ class Agent:
                 final_text = "\n".join(text_blocks).strip()
                 logger.debug(f"Claude response (final): {final_text[:100]}")
                 try:
-                    async with AsyncSessionLocal() as session:
+                    async with _db.AsyncSessionLocal() as session:
                         await save_usage(session, total_input_tokens, total_output_tokens)
                 except Exception as e:
                     logger.warning(f"Failed to save usage: {e}")

@@ -5,7 +5,8 @@ Uses logged usage data from the database.
 
 import logging
 from app.tools.base import BaseTool, ToolResult
-from app.memory import get_usage_stats, AsyncSessionLocal
+from app.memory import get_usage_stats
+import app.memory as _db
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ Examples:
     async def execute(self, days: int = 30, **kwargs) -> ToolResult:
         try:
             days = max(1, min(days, 365))
-            async with AsyncSessionLocal() as session:
+            async with _db.AsyncSessionLocal() as session:
                 stats = await get_usage_stats(session, days)
 
             input_cost = (stats["total_input"] / 1_000_000) * HAIKU_INPUT_COST_PER_M
