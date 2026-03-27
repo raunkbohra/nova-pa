@@ -11,6 +11,7 @@ from app.webhook import app
 from app.config import settings
 from app.memory import init_db, close_db
 from app.tools.reminder_tool import init_scheduler
+from app.briefing import _send_morning_briefing, BRIEFING_JOB_ID
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +41,17 @@ async def lifespan(app):
     scheduler = init_scheduler(sync_db_url)
     scheduler.start()
     logger.info("✅ Scheduler started")
+
+    # Register daily morning briefing at 7:00am NPT
+    from apscheduler.triggers.cron import CronTrigger
+    from pytz import timezone
+    scheduler.add_job(
+        _send_morning_briefing,
+        CronTrigger(hour=7, minute=0, timezone=timezone('Asia/Kathmandu')),
+        id=BRIEFING_JOB_ID,
+        replace_existing=True,
+    )
+    logger.info("✅ Morning briefing scheduled for 7:00am NPT daily")
 
     yield
 
