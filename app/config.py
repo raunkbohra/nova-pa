@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     # External APIs
     openweather_api_key: Optional[str] = None
     news_api_key: Optional[str] = None
+    perplexity_api_key: Optional[str] = None
 
     # Database (PostgreSQL with asyncpg)
     database_url: str
