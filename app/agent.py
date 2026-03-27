@@ -4,8 +4,9 @@ Handles message processing, tool calls, and conversation management.
 """
 
 import logging
-from typing import Optional, List, Tuple
-from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
+import re
+from typing import Optional, List
+from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.memory import (
@@ -16,20 +17,20 @@ from app.tools import get_claude_tools, get_tool
 
 logger = logging.getLogger(__name__)
 
-# Initialize Anthropic client
-client = Anthropic(api_key=settings.anthropic_api_key)
+# Initialize Anthropic async client
+client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
 # Maximum iterations to prevent infinite loops
 MAX_ITERATIONS = 10
 
 # System prompt for Commander Mode
-COMMANDER_SYSTEM = """You are NOVA, Raunak Bohra's executive assistant.
+COMMANDER_SYSTEM = """You are NOVA, Raunk Bohra's executive assistant.
 
-Your role: Help Raunak manage his work efficiently. You have access to his calendar, email, notes, reminders, and can research topics via web search.
+Your role: Help Raunk manage his work efficiently. You have access to his calendar, email, notes, reminders, and can research topics via web search.
 
 Personality:
 - Direct, efficient, zero fluff
-- Smart about what matters to Raunak
+- Smart about what matters to Raunk
 - Proactive with suggestions when relevant
 - Honest about what you can and can't do
 
@@ -44,16 +45,19 @@ Commands you understand:
 - "Research [topic]" → Web search
 - "What's the weather?" → Current weather + forecast
 - "Latest news on [topic]" → News headlines
+- "Send [person] a WhatsApp: [message]" → MUST call send_whatsapp tool with phone + message
+- "Message [number] saying [text]" → MUST call send_whatsapp tool immediately
 - "Help me with [task]" → General assistance
 
 Rules:
-- Keep responses concise unless Raunak asks for details
+- Keep responses concise unless Raunk asks for details
 - Use IST (Asia/Kolkata) timezone by default
 - Always confirm before taking irreversible actions
-- If you can't do something, explain why clearly"""
+- If you can't do something, explain why clearly
+- CRITICAL: When asked to send a WhatsApp/message to a number, you MUST call the send_whatsapp tool. Never reply with text saying you sent it — actually call the tool."""
 
 # System prompt for Receptionist Mode
-RECEPTIONIST_SYSTEM = """You are NOVA, Raunak Bohra's executive assistant.
+RECEPTIONIST_SYSTEM = """You are NOVA, Raunk Bohra's executive assistant.
 
 Your role: Handle external contacts professionally and intelligently.
 
@@ -64,17 +68,17 @@ You have a few key responsibilities:
 
 Decision framework:
 - STRONG signal (investor, client, known partner) → Auto-book meeting
-- UNCLEAR (might be relevant) → Ping Raunak for approval
+- UNCLEAR (might be relevant) → Ping Raunk for approval
 - SPAM/IRRELEVANT (vendor, cold pitch) → Politely decline, don't ping
 
 Special cases:
 - VIP numbers skip all qualification (auto-book immediately)
-- "URGENT" or "Emergency" messages → Always ping Raunak immediately
-- "Just tell Raunak..." → Relay the message + confirm delivery
+- "URGENT" or "Emergency" messages → Always ping Raunk immediately
+- "Just tell Raunk..." → Relay the message + confirm delivery
 - Known repeat contacts → Greet by name, no re-qualification
 
 What you never reveal:
-- Raunak's personal phone or email
+- Raunk's personal phone or email
 - His calendar details beyond "available/busy"
 - Private conversation history
 - Any personal information
@@ -91,9 +95,9 @@ class Agent:
 
     async def process_commander_message(self, message: str, session: AsyncSession) -> str:
         """
-        Process message in Commander Mode (Raunak's personal assistant).
+        Process message in Commander Mode (Raunk's personal assistant).
 
-        Returns: Response text to send back to Raunak
+        Returns: Response text to send back to Raunk
         """
         logger.info(f"Processing Commander message: {message[:100]}")
 
@@ -103,7 +107,7 @@ class Agent:
         # Build system prompt with context
         system = COMMANDER_SYSTEM
         if raunak_info:
-            system += f"\n\nContext about Raunak:\n{raunak_info}"
+            system += f"\n\nContext about Raunk:\n{raunak_info}"
 
         # Get recent message history
         recent_messages = await get_messages(session, limit=settings.max_conversation_history)
@@ -180,15 +184,31 @@ class Agent:
 
         return response
 
+    # Keywords that indicate Raunk wants NOVA to take an action via a tool
+    _ACTION_PATTERNS = re.compile(
+        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply)\b",
+        re.IGNORECASE
+    )
+
+    def _should_force_tool(self, messages: List[dict]) -> bool:
+        """Return True if the last user message is clearly an action request."""
+        for msg in reversed(messages):
+            if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+                return bool(self._ACTION_PATTERNS.search(msg["content"]))
+        return False
+
     async def _call_claude(self, system: str, messages: List[dict],
                          tools: Optional[List[dict]] = None,
                          is_commander: bool = False) -> str:
         """
-        Call Claude Opus 4.6 with adaptive thinking.
+        Call Claude with tool use support.
 
-        Returns: Final text response (strips thinking blocks)
+        Returns: Final text response
         """
         iteration = 0
+        # Force tool use on first iteration for action requests so Haiku
+        # doesn't hallucinate a "Done!" text reply instead of calling the tool.
+        force_tool_first = is_commander and tools and self._should_force_tool(messages)
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -204,9 +224,13 @@ class Agent:
 
             if tools:
                 request_kwargs["tools"] = tools
+                # On the first iteration of an action request, require a tool call
+                if force_tool_first and iteration == 1:
+                    request_kwargs["tool_choice"] = {"type": "any"}
+                    logger.debug("Forcing tool_choice=any on first iteration")
 
             # Call Claude
-            response = client.messages.create(**request_kwargs)
+            response = await client.messages.create(**request_kwargs)
 
             # Process response
             text_blocks = []
