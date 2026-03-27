@@ -121,7 +121,13 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
     """
     Handle incoming WhatsApp message.
     Extract phone, message type, content, etc.
+    Routes to Commander or Receptionist mode based on sender.
     """
+    from app.agent import Agent
+    from app.memory import AsyncSessionLocal
+    from app.voice import handle_voice_note, handle_image
+    from sqlalchemy.ext.asyncio import AsyncSession
+    
     from_phone = msg.get("from")
     msg_id = msg.get("id")
     msg_type = msg.get("type")  # "text", "audio", "image", "document", "button", etc.
@@ -129,12 +135,86 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
 
     logger.info(f"Message from {from_phone} (type={msg_type}, id={msg_id})")
 
-    # TODO: Route to mode router (Commander vs Receptionist)
-    # TODO: Extract message content based on type
-    # TODO: Pass to agent.py for Claude processing
-    # TODO: Send response via whatsapp.py
-
-    pass
+    try:
+        # Extract message content based on type
+        content = None
+        is_voice = False
+        
+        if msg_type == "text":
+            content = msg.get("text", {}).get("body", "")
+        
+        elif msg_type == "audio":
+            # Voice note - transcribe it
+            media = msg.get("audio", {})
+            media_id = media.get("id")
+            if media_id:
+                content = await handle_voice_note(media_id)
+                is_voice = True
+                if content:
+                    content = f"[Voice note transcribed] {content}"
+                else:
+                    content = "[Failed to transcribe voice note]"
+        
+        elif msg_type == "image":
+            # Image - download and note it (Claude can analyze if provided)
+            media = msg.get("image", {})
+            media_id = media.get("id")
+            caption = media.get("caption", "")
+            if media_id:
+                await handle_image(media_id)
+            content = f"[Image received{': ' + caption if caption else ''}]"
+        
+        elif msg_type == "document":
+            # Document
+            media = msg.get("document", {})
+            content = f"[Document received: {media.get('filename', 'unknown')}]"
+        
+        elif msg_type == "button":
+            # Button response
+            button = msg.get("button", {})
+            content = button.get("text", "Button pressed")
+        
+        else:
+            # Unsupported type
+            logger.warning(f"Unsupported message type: {msg_type}")
+            content = f"[Message type not supported: {msg_type}]"
+        
+        if not content:
+            logger.warning(f"No content extracted from message {msg_id}")
+            return
+        
+        # Determine mode: Commander vs Receptionist
+        is_commander = (from_phone == settings.raunak_phone)
+        
+        # Get database session and agent
+        async with AsyncSessionLocal() as session:
+            agent = Agent()
+            
+            # Process message through appropriate mode
+            if is_commander:
+                logger.info(f"Commander Mode: {from_phone}")
+                response = await agent.process_commander_message(content, session)
+            else:
+                logger.info(f"Receptionist Mode: {from_phone}")
+                response = await agent.process_receptionist_message(from_phone, content, session)
+            
+            # Send response back
+            from app.whatsapp import send_text
+            await send_text(from_phone, response)
+            
+            # Save message to conversation history
+            from app.memory import save_message, save_external_message
+            
+            if is_commander:
+                await save_message(session, "user", content)
+            else:
+                await save_external_message(session, from_phone, "user", content)
+    
+    except Exception as e:
+        logger.error(f"Error handling incoming message: {e}", exc_info=True)
+        # Send error response
+        from app.whatsapp import send_text
+        await send_text(from_phone, "Sorry, I encountered an error processing your message. Please try again.")
 
 
 async def _handle_status(status: dict):

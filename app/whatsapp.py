@@ -60,18 +60,28 @@ async def send_text(phone: str, message: str) -> bool:
         return False
 
 
-async def send_audio(phone: str, audio_url: str) -> bool:
+async def send_audio(phone: str, audio_data) -> bool:
     """
     Send audio message via Meta Cloud API.
 
     Args:
         phone: Recipient phone in E.164 format
-        audio_url: URL to audio file (must be publicly accessible or uploaded to Meta)
+        audio_data: Either URL (str) to audio file or raw audio bytes
 
     Returns:
         True if sent successfully, False otherwise
     """
     url = f"{META_API_URL}/{settings.meta_phone_number_id}/messages"
+
+    # If audio_data is bytes, we'd need to upload to Meta first
+    # For now, assume URL or use local upload
+    if isinstance(audio_data, bytes):
+        # TODO: Upload to Meta servers and get URL
+        # For now, return False (not implemented)
+        logger.warning("Direct bytes upload not yet implemented, use URL instead")
+        return False
+    
+    audio_url = audio_data  # Assume it's a URL string
 
     payload = {
         "messaging_product": "whatsapp",
