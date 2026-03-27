@@ -57,8 +57,6 @@ Thumbs.db
 *.log
 logs/
 
-# PM2
-ecosystem.config.js
 
 # Node (if any)
 node_modules/
