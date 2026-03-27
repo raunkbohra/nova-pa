@@ -11,7 +11,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-META_API_URL = "https://graph.facebook.com/v18.0"
+META_API_URL = "https://graph.facebook.com/v22.0"
 
 
 # ============================================================================
