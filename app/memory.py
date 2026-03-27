@@ -4,7 +4,7 @@ Uses SQLAlchemy 2.0 async with asyncpg driver.
 """
 
 from sqlalchemy import (
-    Column, Integer, String, Text, Boolean, DateTime, Index,
+    Column, Integer, String, Text, Boolean, DateTime, Float, Date, Index,
     create_engine, event, text, func
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -90,6 +90,20 @@ class Usage(Base):
     id = Column(Integer, primary_key=True)
     input_tokens = Column(Integer, nullable=False, default=0)
     output_tokens = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SalesData(Base):
+    """Daily iwishbag sales entries"""
+    __tablename__ = "sales_data"
+
+    id = Column(Integer, primary_key=True)
+    date = Column(Date, unique=True, nullable=False, index=True)
+    revenue = Column(Float, nullable=False, default=0.0)
+    orders = Column(Integer, nullable=False, default=0)
+    quotes = Column(Integer, nullable=True)
+    cogs = Column(Float, nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -328,3 +342,140 @@ async def check_rate_limit(session: AsyncSession, phone: str, max_messages: int 
 
     # Return True if over limit
     return rate_limit.message_count > max_messages
+
+
+# ============================================================================
+# Sales Helpers
+# ============================================================================
+
+MONTHLY_TARGET = 3_000_000  # Rs. 30L
+
+
+async def save_sales(session: AsyncSession, date_str: str, revenue: float,
+                     orders: int, quotes: int = None, cogs: float = None,
+                     notes: str = None):
+    """Save or update a daily sales entry (upsert by date)"""
+    from datetime import date as date_type
+    today = datetime.now(timezone.utc).date()
+
+    if date_str.lower() == "today":
+        entry_date = today
+    elif date_str.lower() == "yesterday":
+        from datetime import timedelta
+        entry_date = today - timedelta(days=1)
+    else:
+        try:
+            entry_date = date_type.fromisoformat(date_str)
+        except ValueError:
+            for fmt in ("%b %d", "%B %d", "%b %d %Y", "%B %d %Y"):
+                try:
+                    parsed = datetime.strptime(date_str.strip(), fmt)
+                    entry_date = parsed.replace(year=today.year).date()
+                    break
+                except ValueError:
+                    continue
+            else:
+                raise ValueError(f"Cannot parse date: {date_str}")
+
+    stmt = select(SalesData).where(SalesData.date == entry_date)
+    result = await session.execute(stmt)
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        existing.revenue = revenue
+        existing.orders = orders
+        if quotes is not None:
+            existing.quotes = quotes
+        if cogs is not None:
+            existing.cogs = cogs
+        if notes is not None:
+            existing.notes = notes
+    else:
+        session.add(SalesData(
+            date=entry_date, revenue=revenue, orders=orders,
+            quotes=quotes, cogs=cogs, notes=notes
+        ))
+
+    await session.commit()
+    return entry_date
+
+
+async def get_sales_summary(session: AsyncSession, period: str = "this_month") -> dict:
+    """Return aggregated sales stats for a period vs 30L/month target"""
+    from datetime import date, timedelta
+    today = datetime.now(timezone.utc).date()
+
+    if period == "today":
+        start, end = today, today
+    elif period == "yesterday":
+        start = end = today - timedelta(days=1)
+    elif period == "this_week":
+        start = today - timedelta(days=today.weekday())
+        end = today
+    elif period == "last_7_days":
+        start = today - timedelta(days=6)
+        end = today
+    elif period == "this_month":
+        start = today.replace(day=1)
+        end = today
+    elif period == "last_30_days":
+        start = today - timedelta(days=29)
+        end = today
+    else:
+        start = today.replace(day=1)
+        end = today
+
+    stmt = select(
+        func.sum(SalesData.revenue).label("total_revenue"),
+        func.sum(SalesData.orders).label("total_orders"),
+        func.sum(SalesData.cogs).label("total_cogs"),
+        func.count(SalesData.id).label("days_logged"),
+    ).where(SalesData.date.between(start, end))
+
+    row = (await session.execute(stmt)).one()
+    total_revenue = row.total_revenue or 0.0
+    days_in_period = (end - start).days + 1
+
+    # Month-to-date target progress
+    import calendar
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    expected_by_today = (MONTHLY_TARGET / days_in_month) * today.day
+    pct_of_target = (total_revenue / MONTHLY_TARGET * 100) if period == "this_month" else None
+
+    return {
+        "period": period,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "total_revenue": total_revenue,
+        "total_orders": row.total_orders or 0,
+        "total_cogs": row.total_cogs or 0.0,
+        "days_logged": row.days_logged or 0,
+        "daily_average": total_revenue / days_in_period if days_in_period > 0 else 0,
+        "monthly_target": MONTHLY_TARGET,
+        "pct_of_target": round(pct_of_target, 1) if pct_of_target is not None else None,
+        "on_track": total_revenue >= expected_by_today if period == "this_month" else None,
+    }
+
+
+async def get_sales_trend(session: AsyncSession, period_a: str, period_b: str) -> dict:
+    """Compare two periods side by side"""
+    summary_a = await get_sales_summary(session, period_a)
+    summary_b = await get_sales_summary(session, period_b)
+
+    rev_a = summary_a["total_revenue"]
+    rev_b = summary_b["total_revenue"]
+    pct_change = ((rev_a - rev_b) / rev_b * 100) if rev_b > 0 else None
+
+    return {
+        "period_a": summary_a,
+        "period_b": summary_b,
+        "revenue_change_pct": round(pct_change, 1) if pct_change is not None else None,
+        "orders_change": summary_a["total_orders"] - summary_b["total_orders"],
+    }
+
+
+async def get_all_context(session: AsyncSession) -> dict:
+    """Return all NovaContext rows as {key: value} dict"""
+    stmt = select(NovaContext)
+    result = await session.execute(stmt)
+    return {row.key: row.value for row in result.scalars().all()}
