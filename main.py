@@ -12,6 +12,11 @@ from app.config import settings
 from app.memory import init_db, close_db
 from app.tools.reminder_tool import init_scheduler
 from app.briefing import _send_morning_briefing, BRIEFING_JOB_ID
+from app.proactive import (
+    _check_unanswered_emails, _post_meeting_followup,
+    _contact_checkins, _end_of_day_wrap,
+    JOB_UNANSWERED_EMAILS, JOB_POST_MEETING, JOB_CONTACT_CHECKINS, JOB_EOD_WRAP,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -52,6 +57,43 @@ async def lifespan(app):
         replace_existing=True,
     )
     logger.info("✅ Morning briefing scheduled for 7:00am NPT daily")
+
+    # Unanswered emails — daily 10:00am NPT
+    scheduler.add_job(
+        _check_unanswered_emails,
+        CronTrigger(hour=10, minute=0, timezone=timezone('Asia/Kathmandu')),
+        id=JOB_UNANSWERED_EMAILS,
+        replace_existing=True,
+    )
+    logger.info("✅ Unanswered email check scheduled for 10:00am NPT daily")
+
+    # Post-meeting follow-up — every 30 minutes
+    from apscheduler.triggers.interval import IntervalTrigger
+    scheduler.add_job(
+        _post_meeting_followup,
+        IntervalTrigger(minutes=30),
+        id=JOB_POST_MEETING,
+        replace_existing=True,
+    )
+    logger.info("✅ Post-meeting follow-up scheduled every 30 minutes")
+
+    # Contact check-ins — Monday 9:00am NPT
+    scheduler.add_job(
+        _contact_checkins,
+        CronTrigger(day_of_week="mon", hour=9, minute=0, timezone=timezone('Asia/Kathmandu')),
+        id=JOB_CONTACT_CHECKINS,
+        replace_existing=True,
+    )
+    logger.info("✅ Contact check-ins scheduled for Monday 9:00am NPT")
+
+    # End-of-day wrap — daily 8:00pm NPT
+    scheduler.add_job(
+        _end_of_day_wrap,
+        CronTrigger(hour=20, minute=0, timezone=timezone('Asia/Kathmandu')),
+        id=JOB_EOD_WRAP,
+        replace_existing=True,
+    )
+    logger.info("✅ End-of-day wrap scheduled for 8:00pm NPT daily")
 
     yield
 

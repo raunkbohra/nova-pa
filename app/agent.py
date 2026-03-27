@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.memory import (
     save_message, get_messages, get_context, set_context,
-    save_external_message, get_external_thread, save_usage
+    save_external_message, get_external_thread, save_usage, get_all_context
 )
 import app.memory as _db
 from app.tools import get_claude_tools, get_tool
@@ -24,10 +24,10 @@ client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 # Maximum iterations to prevent infinite loops
 MAX_ITERATIONS = 10
 
-# System prompt for Commander Mode
+# System prompt for Commander Mode (base — dynamic context appended at runtime)
 COMMANDER_SYSTEM = """You are NOVA, Raunk Bohra's executive assistant.
 
-Your role: Help Raunk manage his work efficiently. You have access to his calendar, email, notes, reminders, and can research topics via web search.
+Your role: Help Raunk manage his work efficiently. You have access to his calendar, email, notes, reminders, sales data, memory, and can research topics via web search.
 
 Personality:
 - Direct, efficient, zero fluff
@@ -50,6 +50,20 @@ Commands you understand:
 - "Send [person] a WhatsApp: [message]" → MUST call send_whatsapp tool with phone + message
 - "Message [number] saying [text]" → MUST call send_whatsapp tool immediately
 - "Help me with [task]" → General assistance
+
+Sales (iwishbag):
+- When Raunk pastes sales figures (revenue, orders), call sales tool with action=log
+- "How are sales this month?" → sales tool with action=summary, period=this_month
+- "Compare this week vs last week" → sales tool with action=trend
+- Monthly target is Rs. 30L (3,000,000). Always show % of target when reporting sales.
+
+Memory:
+- When you learn a preference → memory tool: remember(key="pref:...", value="...")
+- When you learn a goal/target → memory tool: remember(key="goal:...", value="...")
+- When you learn about a person → memory tool: remember(key="person:...", value="...")
+- When you learn a project update → memory tool: remember(key="project:...", value="...")
+- "Remember that..." / "I prefer..." / "My goal is..." → auto-save to memory
+- "What do you know about X?" → memory tool: recall(pattern="person:X")
 
 Rules:
 - Keep responses concise unless Raunk asks for details
@@ -103,13 +117,14 @@ class Agent:
         """
         logger.info(f"Processing Commander message: {message[:100]}")
 
-        # Load Raunak context
-        raunak_info = await get_context(session, "raunak_info")
+        # Load all memory context (preferences, goals, people, projects)
+        all_context = await get_all_context(session)
 
-        # Build system prompt with context
+        # Build system prompt with dynamic memory context
         system = COMMANDER_SYSTEM
-        if raunak_info:
-            system += f"\n\nContext about Raunk:\n{raunak_info}"
+        if all_context:
+            lines = [f"  {k}: {v}" for k, v in sorted(all_context.items())]
+            system += "\n\nWhat you know about Raunk (from memory):\n" + "\n".join(lines)
 
         # Get recent message history
         recent_messages = await get_messages(session, limit=settings.max_conversation_history)
@@ -188,7 +203,7 @@ class Agent:
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove)\b",
+        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget)\b",
         re.IGNORECASE
     )
 

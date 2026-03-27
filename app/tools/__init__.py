@@ -45,6 +45,8 @@ from app.tools.perplexity_tool import PerplexityTool
 from app.tools.whatsapp_tool import WhatsAppTool
 from app.tools.contacts_tool import ContactsTool
 from app.tools.cost_tool import CostTool
+from app.tools.memory_tool import MemoryTool
+from app.tools.sales_tool import SalesTool
 
 register_tool(NotesTool())
 register_tool(CalendarTool())
@@ -56,3 +58,5 @@ register_tool(PerplexityTool())
 register_tool(WhatsAppTool())
 register_tool(ContactsTool())
 register_tool(CostTool())
+register_tool(MemoryTool())
+register_tool(SalesTool())
