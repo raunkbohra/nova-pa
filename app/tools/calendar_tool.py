@@ -15,7 +15,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-IST = timezone('Asia/Kolkata')
+IST = timezone('Asia/Kathmandu')
 
 # Google Calendar API endpoints
 CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3"

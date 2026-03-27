@@ -43,6 +43,7 @@ from app.tools.weather_tool import WeatherTool
 from app.tools.news_tool import NewsTool
 from app.tools.perplexity_tool import PerplexityTool
 from app.tools.whatsapp_tool import WhatsAppTool
+from app.tools.contacts_tool import ContactsTool
 
 register_tool(NotesTool())
 register_tool(CalendarTool())
@@ -52,3 +53,4 @@ register_tool(WeatherTool())
 register_tool(NewsTool())
 register_tool(PerplexityTool())
 register_tool(WhatsAppTool())
+register_tool(ContactsTool())

@@ -243,6 +243,27 @@ async def set_context(session: AsyncSession, key: str, value: str):
     await session.commit()
 
 
+async def get_recent_contacts(session: AsyncSession, limit: int = 10) -> List[Contact]:
+    """Get recent contacts ordered by last activity (last_seen or first_seen)"""
+    from sqlalchemy import func, case
+    stmt = (
+        select(Contact)
+        .order_by(
+            func.coalesce(Contact.last_seen, Contact.first_seen).desc()
+        )
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return result.scalars().all()
+
+
+async def search_contact_by_name(session: AsyncSession, name: str) -> Optional[Contact]:
+    """Find contact by partial name match (case-insensitive)"""
+    stmt = select(Contact).where(Contact.name.ilike(f"%{name}%")).limit(1)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def check_rate_limit(session: AsyncSession, phone: str, max_messages: int = 10,
                           window_seconds: int = 3600) -> bool:
     """Check if contact exceeded rate limit"""

@@ -17,7 +17,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-IST = timezone('Asia/Kolkata')
+IST = timezone('Asia/Kathmandu')
 
 # Global scheduler instance
 _scheduler: Optional[AsyncIOScheduler] = None

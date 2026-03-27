@@ -50,8 +50,8 @@ Examples:
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["list", "search", "read", "draft", "send"],
-                    "description": "Action: 'list' emails, 'search' by query, 'read' a specific email, 'draft' a new message, or 'send' an email"
+                    "enum": ["list", "search", "read", "draft", "send", "delete"],
+                    "description": "Action: 'list' emails, 'search' by query, 'read' a specific email, 'draft' a new message, 'send' an email, or 'delete' an email (moves to trash by default)"
                 },
                 "query": {
                     "type": "string",
@@ -80,6 +80,10 @@ Examples:
                 "limit": {
                     "type": "integer",
                     "description": "Number of emails to return (default 10)"
+                },
+                "permanent": {
+                    "type": "boolean",
+                    "description": "For delete action: if true, permanently deletes (unrecoverable). Default false moves to Trash."
                 }
             },
             "required": ["action"]
@@ -106,6 +110,8 @@ Examples:
                 return await self._draft_email(**kwargs)
             elif action == "send":
                 return await self._send_email(**kwargs)
+            elif action == "delete":
+                return await self._delete_email(**kwargs)
             else:
                 return ToolResult(
                     tool_name=self.name,
@@ -410,6 +416,34 @@ Examples:
                 success=False,
                 error=str(e)
             )
+
+    async def _delete_email(self, email_id: str = None, permanent: bool = False, **kwargs) -> ToolResult:
+        """Move email to trash or permanently delete it"""
+        if not email_id:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="email_id is required to delete an email"
+            )
+
+        try:
+            if permanent:
+                await self._call_api("DELETE", f"/users/me/messages/{email_id}")
+                return ToolResult(
+                    tool_name=self.name,
+                    success=True,
+                    data={"status": "permanently deleted", "email_id": email_id}
+                )
+            else:
+                await self._call_api("POST", f"/users/me/messages/{email_id}/trash")
+                return ToolResult(
+                    tool_name=self.name,
+                    success=True,
+                    data={"status": "moved to trash", "email_id": email_id}
+                )
+        except Exception as e:
+            logger.error(f"Failed to delete email: {e}")
+            return ToolResult(tool_name=self.name, success=False, error=str(e))
 
     async def _get_message_preview(self, message_id: str) -> Optional[dict]:
         """Get preview of a message"""
