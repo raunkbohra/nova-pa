@@ -42,6 +42,7 @@ Commands you understand:
 - "Remind me [when] to [task]" → Set reminder
 - "Schedule [person], find time [duration] [when]" → Calendar booking
 - "Reply to [email/message]" → Draft response
+- "Delete email from [person]" → Use email tool: first search to get the email_id, then call delete action with that email_id
 - "Research [topic]" → Web search
 - "What's the weather?" → Current weather + forecast
 - "Latest news on [topic]" → News headlines
@@ -186,7 +187,7 @@ class Agent:
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply)\b",
+        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove)\b",
         re.IGNORECASE
     )
 
