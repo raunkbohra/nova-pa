@@ -1,0 +1,411 @@
+"""
+Email Tool — Gmail integration.
+Read, search, draft, and send emails.
+"""
+
+import logging
+from typing import Optional, List
+import base64
+from email.mime.text import MIMEText
+from app.tools.base import BaseTool, ToolResult
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Google Gmail API endpoint
+GMAIL_API_URL = "https://www.googleapis.com/gmail/v1"
+
+
+class EmailTool(BaseTool):
+    """Tool for managing Gmail"""
+
+    def __init__(self, session=None):
+        self.session = session
+        self._access_token = None
+
+    @property
+    def name(self) -> str:
+        return "email"
+
+    @property
+    def description(self) -> str:
+        return """Manage Raunak's Gmail inbox.
+Read, search, draft, and send emails.
+
+Examples:
+- "Show me my unread emails"
+- "Search for emails from Sequoia"
+- "What did Raj say in his last email?"
+- "Draft a reply to Amit"
+- "Send this email: [text]"
+        """
+
+    @property
+    def input_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "search", "read", "draft", "send"],
+                    "description": "Action: 'list' emails, 'search' by query, 'read' a specific email, 'draft' a new message, or 'send' an email"
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Search query (e.g., 'from:raj@example.com', 'subject:meeting', 'is:unread')"
+                },
+                "email_id": {
+                    "type": "string",
+                    "description": "Email ID to read (required for read action)"
+                },
+                "to": {
+                    "type": "string",
+                    "description": "Recipient email address (required for draft/send)"
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject (required for draft/send)"
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Email body text (required for draft/send)"
+                },
+                "thread_id": {
+                    "type": "string",
+                    "description": "Thread ID to reply to (optional for draft/send)"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of emails to return (default 10)"
+                }
+            },
+            "required": ["action"]
+        }
+
+    async def execute(self, action: str, **kwargs) -> ToolResult:
+        """Execute email operation"""
+        try:
+            # Ensure we have an access token
+            if not await self._ensure_token():
+                return ToolResult(
+                    tool_name=self.name,
+                    success=False,
+                    error="Could not authenticate with Gmail API"
+                )
+            
+            if action == "list":
+                return await self._list_emails(**kwargs)
+            elif action == "search":
+                return await self._search_emails(**kwargs)
+            elif action == "read":
+                return await self._read_email(**kwargs)
+            elif action == "draft":
+                return await self._draft_email(**kwargs)
+            elif action == "send":
+                return await self._send_email(**kwargs)
+            else:
+                return ToolResult(
+                    tool_name=self.name,
+                    success=False,
+                    error=f"Unknown action: {action}"
+                )
+        except Exception as e:
+            logger.error(f"Email tool error: {e}")
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(e)
+            )
+
+    async def _ensure_token(self) -> bool:
+        """Ensure we have a valid Gmail API token"""
+        # TODO: Load token from file and refresh if needed
+        return True
+
+    async def _list_emails(self, limit: int = 10, **kwargs) -> ToolResult:
+        """List recent emails from inbox"""
+        try:
+            params = {
+                "q": "in:inbox",
+                "maxResults": min(limit, 10)
+            }
+            
+            result = await self._call_api("GET", "/users/me/messages", params=params)
+            
+            if not result.get("messages"):
+                return ToolResult(
+                    tool_name=self.name,
+                    success=True,
+                    data={
+                        "emails": [],
+                        "count": 0
+                    }
+                )
+            
+            emails = []
+            for msg in result["messages"][:limit]:
+                email_data = await self._get_message_preview(msg["id"])
+                if email_data:
+                    emails.append(email_data)
+            
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={
+                    "emails": emails,
+                    "count": len(emails)
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to list emails: {e}")
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(e)
+            )
+
+    async def _search_emails(self, query: str = None, limit: int = 10, **kwargs) -> ToolResult:
+        """Search emails by query"""
+        if not query:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="Query is required to search emails"
+            )
+        
+        try:
+            params = {
+                "q": query,
+                "maxResults": min(limit, 10)
+            }
+            
+            result = await self._call_api("GET", "/users/me/messages", params=params)
+            
+            if not result.get("messages"):
+                return ToolResult(
+                    tool_name=self.name,
+                    success=True,
+                    data={
+                        "query": query,
+                        "emails": [],
+                        "count": 0
+                    }
+                )
+            
+            emails = []
+            for msg in result["messages"][:limit]:
+                email_data = await self._get_message_preview(msg["id"])
+                if email_data:
+                    emails.append(email_data)
+            
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={
+                    "query": query,
+                    "emails": emails,
+                    "count": len(emails)
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to search emails: {e}")
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(e)
+            )
+
+    async def _read_email(self, email_id: str = None, **kwargs) -> ToolResult:
+        """Read full email content"""
+        if not email_id:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="Email ID is required"
+            )
+        
+        try:
+            msg = await self._call_api("GET", f"/users/me/messages/{email_id}")
+            
+            headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
+            
+            body_text = ""
+            if "parts" in msg["payload"]:
+                for part in msg["payload"]["parts"]:
+                    if part.get("mimeType") == "text/plain":
+                        data = part.get("body", {}).get("data")
+                        if data:
+                            body_text = base64.urlsafe_b64decode(data).decode("utf-8")
+                            break
+            else:
+                data = msg["payload"].get("body", {}).get("data")
+                if data:
+                    body_text = base64.urlsafe_b64decode(data).decode("utf-8")
+            
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={
+                    "email_id": email_id,
+                    "from": headers.get("From", ""),
+                    "to": headers.get("To", ""),
+                    "subject": headers.get("Subject", ""),
+                    "date": headers.get("Date", ""),
+                    "body": body_text[:1000],  # First 1000 chars
+                    "thread_id": msg.get("threadId")
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to read email: {e}")
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(e)
+            )
+
+    async def _draft_email(self, to: str = None, subject: str = None,
+                          body: str = None, thread_id: str = None, **kwargs) -> ToolResult:
+        """Create a draft email"""
+        if not to:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="To address is required"
+            )
+        
+        if not subject:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="Subject is required"
+            )
+        
+        if not body:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="Body is required"
+            )
+        
+        try:
+            # Create MIME message
+            message = MIMEText(body)
+            message["to"] = to
+            message["subject"] = subject
+            
+            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+            
+            draft_body = {
+                "message": {
+                    "raw": raw_message
+                }
+            }
+            
+            if thread_id:
+                draft_body["message"]["threadId"] = thread_id
+            
+            result = await self._call_api("POST", "/users/me/drafts", json=draft_body)
+            
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={
+                    "status": "drafted",
+                    "draft_id": result.get("id"),
+                    "to": to,
+                    "subject": subject,
+                    "preview": body[:100]
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to draft email: {e}")
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(e)
+            )
+
+    async def _send_email(self, to: str = None, subject: str = None,
+                         body: str = None, thread_id: str = None, **kwargs) -> ToolResult:
+        """Send an email"""
+        if not to:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="To address is required"
+            )
+        
+        if not subject:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="Subject is required"
+            )
+        
+        if not body:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error="Body is required"
+            )
+        
+        try:
+            # Create MIME message
+            message = MIMEText(body)
+            message["to"] = to
+            message["subject"] = subject
+            
+            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+            
+            send_body = {
+                "raw": raw_message
+            }
+            
+            if thread_id:
+                send_body["threadId"] = thread_id
+            
+            result = await self._call_api("POST", "/users/me/messages/send", json=send_body)
+            
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={
+                    "status": "sent",
+                    "message_id": result.get("id"),
+                    "to": to,
+                    "subject": subject
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(e)
+            )
+
+    async def _get_message_preview(self, message_id: str) -> Optional[dict]:
+        """Get preview of a message"""
+        try:
+            msg = await self._call_api("GET", f"/users/me/messages/{message_id}", params={"format": "metadata"})
+            
+            headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
+            
+            return {
+                "email_id": message_id,
+                "from": headers.get("From", ""),
+                "subject": headers.get("Subject", ""),
+                "date": headers.get("Date", ""),
+                "snippet": msg.get("snippet", ""),
+                "thread_id": msg.get("threadId")
+            }
+        except Exception as e:
+            logger.error(f"Failed to get message preview: {e}")
+            return None
+
+    async def _call_api(self, method: str, path: str, params=None, json=None):
+        """Call Gmail API"""
+        # TODO: Implement actual API call with auth
+        # For now, return mock data
+        logger.warning("Gmail API call not implemented - returning mock data")
+        return {"messages": []}
