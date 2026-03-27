@@ -127,10 +127,33 @@ Examples:
             )
 
     async def _ensure_token(self) -> bool:
-        """Ensure we have a valid Google API token"""
-        # TODO: Load token from file and refresh if needed
-        # For now, assume token is stored and available
-        return True
+        """Load and refresh Google OAuth token from file"""
+        try:
+            import json
+            import os
+            token_file = settings.google_token_file
+            if not os.path.exists(token_file):
+                logger.error(f"Google token file not found: {token_file}")
+                return False
+
+            with open(token_file) as f:
+                token_data = json.load(f)
+
+            creds = Credentials.from_authorized_user_info(token_data)
+
+            if not creds.valid and creds.refresh_token:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, creds.refresh, Request())
+                updated = json.loads(creds.to_json())
+                with open(token_file, "w") as f:
+                    json.dump(updated, f)
+
+            self._access_token = creds.token
+            return True
+        except Exception as e:
+            logger.error(f"Failed to load Google token: {e}")
+            return False
 
     async def _list_events(self, time_range: str = "today", **kwargs) -> ToolResult:
         """List events in a time range"""
@@ -138,7 +161,6 @@ Examples:
             start_dt, end_dt = self._parse_time_range(time_range)
             
             params = {
-                "calendarId": "primary",
                 "timeMin": start_dt.isoformat(),
                 "timeMax": end_dt.isoformat(),
                 "singleEvents": True,
@@ -292,7 +314,6 @@ Examples:
             start_dt, end_dt = self._parse_time_range(time_range)
             
             params = {
-                "calendarId": "primary",
                 "timeMin": start_dt.isoformat(),
                 "timeMax": end_dt.isoformat(),
                 "singleEvents": True,
@@ -393,11 +414,23 @@ Examples:
             )
 
     async def _call_api(self, method: str, path: str, params=None, json=None):
-        """Call Google Calendar API"""
-        # TODO: Implement actual API call with auth
-        # For now, return mock data
-        logger.warning("Calendar API call not implemented - returning mock data")
-        return {"items": []}
+        """Call Google Calendar API with OAuth token"""
+        url = f"{CALENDAR_API_URL}/calendars/primary{path}"
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.request(
+                method,
+                url,
+                headers=headers,
+                params=params,
+                json=json,
+                timeout=15.0
+            )
+            if response.status_code == 204:
+                return {}
+            response.raise_for_status()
+            return response.json()
 
     def _parse_time(self, time_str: str) -> datetime:
         """Parse natural language time string to datetime"""

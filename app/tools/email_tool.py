@@ -7,6 +7,9 @@ import logging
 from typing import Optional, List
 import base64
 from email.mime.text import MIMEText
+import httpx
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from app.tools.base import BaseTool, ToolResult
 from app.config import settings
 
@@ -118,9 +121,33 @@ Examples:
             )
 
     async def _ensure_token(self) -> bool:
-        """Ensure we have a valid Gmail API token"""
-        # TODO: Load token from file and refresh if needed
-        return True
+        """Load and refresh Google OAuth token from file"""
+        try:
+            import json
+            import os
+            token_file = settings.google_token_file
+            if not os.path.exists(token_file):
+                logger.error(f"Google token file not found: {token_file}")
+                return False
+
+            with open(token_file) as f:
+                token_data = json.load(f)
+
+            creds = Credentials.from_authorized_user_info(token_data)
+
+            if not creds.valid and creds.refresh_token:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, creds.refresh, Request())
+                updated = json.loads(creds.to_json())
+                with open(token_file, "w") as f:
+                    json.dump(updated, f)
+
+            self._access_token = creds.token
+            return True
+        except Exception as e:
+            logger.error(f"Failed to load Google token: {e}")
+            return False
 
     async def _list_emails(self, limit: int = 10, **kwargs) -> ToolResult:
         """List recent emails from inbox"""
@@ -404,8 +431,20 @@ Examples:
             return None
 
     async def _call_api(self, method: str, path: str, params=None, json=None):
-        """Call Gmail API"""
-        # TODO: Implement actual API call with auth
-        # For now, return mock data
-        logger.warning("Gmail API call not implemented - returning mock data")
-        return {"messages": []}
+        """Call Gmail API with OAuth token"""
+        url = f"{GMAIL_API_URL}{path}"
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.request(
+                method,
+                url,
+                headers=headers,
+                params=params,
+                json=json,
+                timeout=15.0
+            )
+            if response.status_code == 204:
+                return {}
+            response.raise_for_status()
+            return response.json()

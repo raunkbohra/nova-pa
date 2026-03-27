@@ -18,8 +18,9 @@ class Settings(BaseSettings):
     meta_access_token: str
     meta_phone_number_id: str
 
-    # Raunak's phone (E.164 format: +919XXXXXXXXX)
+    # Raunk's phones (primary + optional secondary, comma-separated)
     raunak_phone: str
+    raunak_phone2: Optional[str] = None
 
     # Google APIs
     google_credentials_file: str = "data/google_credentials.json"

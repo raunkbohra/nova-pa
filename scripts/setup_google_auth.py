@@ -25,10 +25,15 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
 
-# Google OAuth2 scopes for Calendar and Gmail
+# Google OAuth2 scopes
 SCOPES = [
     'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/gmail.modify'
+    'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/tasks',
+    'https://www.googleapis.com/auth/contacts',
 ]
 
 # Data directory

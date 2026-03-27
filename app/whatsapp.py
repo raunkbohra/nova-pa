@@ -145,8 +145,8 @@ async def download_media(media_id: str) -> Optional[bytes]:
                 logger.error(f"No URL in media response: {media_data}")
                 return None
 
-            # Then download the actual media
-            media_response = await client.get(media_url, timeout=30.0)
+            # Then download the actual media (requires auth header too)
+            media_response = await client.get(media_url, headers=headers, timeout=30.0)
             media_response.raise_for_status()
 
             logger.info(f"Media downloaded: {media_id}, size={len(media_response.content)}")

@@ -5,9 +5,8 @@ Save, retrieve, search notes with tags.
 
 import logging
 from typing import List
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.tools.base import BaseTool, ToolResult
-from app.memory import save_note, search_notes
+from app.memory import save_note, search_notes, AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +14,8 @@ logger = logging.getLogger(__name__)
 class NotesTool(BaseTool):
     """Tool for managing notes and second brain"""
 
-    def __init__(self, session: AsyncSession = None):
-        self.session = session
+    def __init__(self):
+        pass
 
     @property
     def name(self) -> str:
@@ -97,7 +96,8 @@ Examples:
         if not title:
             title = content[:50] + ("..." if len(content) > 50 else "")
 
-        note = await save_note(self.session, title, content, tags)
+        async with AsyncSessionLocal() as session:
+            note = await save_note(session, title, content, tags)
 
         return ToolResult(
             tool_name=self.name,
@@ -119,7 +119,8 @@ Examples:
                 error="Query is required to search notes"
             )
 
-        notes = await search_notes(self.session, query)
+        async with AsyncSessionLocal() as session:
+            notes = await search_notes(session, query)
 
         if not notes:
             return ToolResult(

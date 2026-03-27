@@ -4,6 +4,7 @@ Survives server restarts via APScheduler + PostgreSQL.
 """
 
 import logging
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,7 +13,6 @@ from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.tools.base import BaseTool, ToolResult
-from app.whatsapp import send_text
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,17 @@ IST = timezone('Asia/Kolkata')
 
 # Global scheduler instance
 _scheduler: Optional[AsyncIOScheduler] = None
+
+
+async def _fire_reminder(message: str, job_id: str):
+    """Module-level function — required for APScheduler SQLAlchemy job store serialization."""
+    from app.whatsapp import send_text
+    from app.config import settings
+    try:
+        await send_text(settings.raunak_phone, f"⏰ Reminder: {message}")
+        logger.info(f"Reminder fired: {job_id}")
+    except Exception as e:
+        logger.error(f"Failed to fire reminder {job_id}: {e}")
 
 
 def init_scheduler(database_url: str) -> AsyncIOScheduler:
@@ -150,10 +161,10 @@ Examples:
             # Parse 'when' string and schedule job
             trigger, next_run = self._parse_when(when)
             
-            job_id = f"reminder_{int(datetime.now().timestamp())}"
-            
+            job_id = f"reminder_{uuid.uuid4().hex[:8]}"
+
             scheduler.add_job(
-                self._send_reminder,
+                _fire_reminder,
                 trigger=trigger,
                 args=[message, job_id],
                 id=job_id,
@@ -238,27 +249,39 @@ Examples:
                 error=str(e)
             )
 
-    async def _send_reminder(self, message: str, job_id: str):
-        """Send reminder via WhatsApp (called by scheduler)"""
-        try:
-            reminder_text = f"⏰ Reminder: {message}"
-            await send_text(settings.raunak_phone, reminder_text)
-            logger.info(f"Reminder sent: {job_id}")
-        except Exception as e:
-            logger.error(f"Failed to send reminder: {e}")
+    def _parse_time_part(self, time_str: str) -> tuple:
+        """Parse a time string like '6am', '3pm', '14:30', '6:30am' into (hour, minute)"""
+        s = time_str.strip().lower()
+        is_pm = "pm" in s
+        is_am = "am" in s
+        s = s.replace("am", "").replace("pm", "").strip()
+
+        if ":" in s:
+            parts = s.split(":")
+            hour, minute = int(parts[0]), int(parts[1])
+        else:
+            hour, minute = int(s), 0
+
+        if is_pm and hour < 12:
+            hour += 12
+        if is_am and hour == 12:
+            hour = 0
+
+        return hour, minute
 
     def _parse_when(self, when: str) -> tuple:
         """Parse when string and return (trigger, next_run_time)"""
         when_lower = when.lower().strip()
         now = datetime.now(IST)
         
-        # "in X minutes/hours"
-        if when_lower.startswith("in "):
-            parts = when_lower[3:].split()
+        # "in X minutes/hours" or "X minutes/hours"
+        relative_str = when_lower[3:] if when_lower.startswith("in ") else when_lower
+        parts = relative_str.split()
+        if parts and parts[0].isdigit():
             try:
                 amount = int(parts[0])
                 unit = parts[1].lower() if len(parts) > 1 else "minutes"
-                
+
                 if unit.startswith("minute"):
                     delta = timedelta(minutes=amount)
                 elif unit.startswith("hour"):
@@ -267,47 +290,40 @@ Examples:
                     delta = timedelta(days=amount)
                 else:
                     delta = timedelta(minutes=amount)
-                
+
                 run_time = now + delta
                 from apscheduler.triggers.date import DateTrigger
-                return DateTrigger(run_time=run_time), run_time
+                return DateTrigger(run_date=run_time), run_time
             except (ValueError, IndexError):
                 raise ValueError(f"Could not parse time: {when}")
         
-        # "tomorrow at HH:MM"
+        # "tomorrow at HH:MM" or "tomorrow at 6am"
         if when_lower.startswith("tomorrow"):
             tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            
+
             if "at " in when_lower:
                 time_part = when_lower.split("at ")[1].strip()
                 try:
-                    hour, minute = map(int, time_part.replace(":", " ").split())
-                    tomorrow = tomorrow.replace(hour=hour, minute=minute)
+                    parsed_hour, parsed_minute = self._parse_time_part(time_part)
+                    tomorrow = tomorrow.replace(hour=parsed_hour, minute=parsed_minute)
                 except:
                     raise ValueError(f"Could not parse time: {when}")
-            
+
             from apscheduler.triggers.date import DateTrigger
-            return DateTrigger(run_time=tomorrow), tomorrow
+            return DateTrigger(run_date=tomorrow), tomorrow
         
         # "HHpm/am" or "HH:MM"
         if "am" in when_lower or "pm" in when_lower or ":" in when_lower:
-            # Simple 24h time or 12h with am/pm
             try:
-                if "am" in when_lower or "pm" in when_lower:
-                    time_obj = datetime.strptime(when_lower.replace("am", "").replace("pm", "").strip(), "%I:%M" if ":" in when_lower else "%I")
-                    if "pm" in when_lower and time_obj.hour < 12:
-                        time_obj = time_obj.replace(hour=time_obj.hour + 12)
-                else:
-                    time_obj = datetime.strptime(when_lower, "%H:%M" if ":" in when_lower else "%H")
-                
-                today_run = now.replace(hour=time_obj.hour, minute=time_obj.minute, second=0, microsecond=0)
-                
+                hour, minute = self._parse_time_part(when_lower)
+                today_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
                 # If time has passed today, schedule for tomorrow
                 if today_run <= now:
-                    today_run = (today_run + timedelta(days=1))
-                
+                    today_run = today_run + timedelta(days=1)
+
                 from apscheduler.triggers.date import DateTrigger
-                return DateTrigger(run_time=today_run), today_run
+                return DateTrigger(run_date=today_run), today_run
             except:
                 raise ValueError(f"Could not parse time: {when}")
         
@@ -335,13 +351,7 @@ Examples:
             if "at " in parts:
                 time_part = parts.split("at ")[1].strip()
                 try:
-                    if "pm" in time_part or "am" in time_part:
-                        time_obj = datetime.strptime(time_part.replace("am", "").replace("pm", "").strip(), "%I:%M" if ":" in time_part else "%I")
-                        if "pm" in time_part and time_obj.hour < 12:
-                            time_obj = time_obj.replace(hour=time_obj.hour + 12)
-                    else:
-                        time_obj = datetime.strptime(time_part, "%H:%M" if ":" in time_part else "%H")
-                    hour, minute = time_obj.hour, time_obj.minute
+                    hour, minute = self._parse_time_part(time_part)
                 except:
                     pass
             

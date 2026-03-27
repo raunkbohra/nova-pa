@@ -199,7 +199,10 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
             return
         
         # Determine mode: Commander vs Receptionist
-        is_commander = (from_phone == settings.raunak_phone)
+        commander_phones = {settings.raunak_phone}
+        if settings.raunak_phone2:
+            commander_phones.add(settings.raunak_phone2.strip())
+        is_commander = from_phone in commander_phones
         
         # Get database session and agent
         async with AsyncSessionLocal() as session:
@@ -216,14 +219,6 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
             # Send response back
             from app.whatsapp import send_text
             await send_text(from_phone, response)
-            
-            # Save message to conversation history
-            from app.memory import save_message, save_external_message
-            
-            if is_commander:
-                await save_message(session, "user", content)
-            else:
-                await save_external_message(session, from_phone, "user", content)
     
     except Exception as e:
         logger.error(f"Error handling incoming message: {e}", exc_info=True)
@@ -238,12 +233,13 @@ async def _handle_status(status: dict):
     """
     msg_id = status.get("id")
     recipient_id = status.get("recipient_id")
-    status_value = status.get("status")  # "sent", "delivered", "read"
+    status_value = status.get("status")  # "sent", "delivered", "read", "failed"
+    errors = status.get("errors", [])
 
-    logger.debug(f"Status update: msg={msg_id}, status={status_value}")
-
-    # TODO: Update message status in database if needed
-    pass
+    if errors:
+        logger.error(f"Message delivery FAILED: msg={msg_id}, to={recipient_id}, errors={errors}")
+    else:
+        logger.info(f"Message status: {status_value} → {recipient_id} (msg={msg_id})")
 
 
 # ============================================================================

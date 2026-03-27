@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from app.webhook import app
 from app.config import settings
 from app.memory import init_db, close_db
+from app.tools.reminder_tool import init_scheduler
 
 # Configure logging
 logging.basicConfig(
@@ -34,10 +35,17 @@ async def lifespan(app):
     await init_db(settings.database_url)
     logger.info("✅ Database initialized")
 
+    # APScheduler job store needs a sync DB URL (not asyncpg)
+    sync_db_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
+    scheduler = init_scheduler(sync_db_url)
+    scheduler.start()
+    logger.info("✅ Scheduler started")
+
     yield
 
     # Shutdown
     logger.info("🛑 NOVA shutting down...")
+    scheduler.shutdown(wait=False)
     await close_db()
     logger.info("✅ Database closed")
 
