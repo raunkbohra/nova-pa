@@ -7,11 +7,8 @@ import logging
 from datetime import datetime, timedelta, time
 from typing import Optional, List
 from pytz import timezone
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from google.oauth2 import oauth2_credentials
-import google.auth.transport.requests
-from google.auth.transport.requests import Request as AuthRequest
 import httpx
 from app.tools.base import BaseTool, ToolResult
 from app.config import settings
