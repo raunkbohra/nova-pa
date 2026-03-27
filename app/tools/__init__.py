@@ -44,6 +44,7 @@ from app.tools.news_tool import NewsTool
 from app.tools.perplexity_tool import PerplexityTool
 from app.tools.whatsapp_tool import WhatsAppTool
 from app.tools.contacts_tool import ContactsTool
+from app.tools.cost_tool import CostTool
 
 register_tool(NotesTool())
 register_tool(CalendarTool())
@@ -54,3 +55,4 @@ register_tool(NewsTool())
 register_tool(PerplexityTool())
 register_tool(WhatsAppTool())
 register_tool(ContactsTool())
+register_tool(CostTool())

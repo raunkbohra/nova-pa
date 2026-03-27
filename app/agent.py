@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.memory import (
     save_message, get_messages, get_context, set_context,
-    save_external_message, get_external_thread
+    save_external_message, get_external_thread, save_usage, AsyncSessionLocal
 )
 from app.tools import get_claude_tools, get_tool
 
@@ -207,6 +207,8 @@ class Agent:
         Returns: Final text response
         """
         iteration = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
         # Force tool use on first iteration for action requests so Haiku
         # doesn't hallucinate a "Done!" text reply instead of calling the tool.
         force_tool_first = is_commander and tools and self._should_force_tool(messages)
@@ -232,6 +234,8 @@ class Agent:
 
             # Call Claude
             response = await client.messages.create(**request_kwargs)
+            total_input_tokens += response.usage.input_tokens
+            total_output_tokens += response.usage.output_tokens
 
             # Process response
             text_blocks = []
@@ -243,10 +247,15 @@ class Agent:
                 elif block.type == "tool_use" and is_commander:
                     tool_calls.append(block)
 
-            # If no tool calls, return text and done
+            # If no tool calls, save usage and return
             if not tool_calls:
                 final_text = "\n".join(text_blocks).strip()
                 logger.debug(f"Claude response (final): {final_text[:100]}")
+                try:
+                    async with AsyncSessionLocal() as session:
+                        await save_usage(session, total_input_tokens, total_output_tokens)
+                except Exception as e:
+                    logger.warning(f"Failed to save usage: {e}")
                 return final_text
 
             # Process tool calls

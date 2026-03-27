@@ -83,6 +83,16 @@ class NovaContext(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
 
 
+class Usage(Base):
+    """Claude API token usage per request"""
+    __tablename__ = "usage"
+
+    id = Column(Integer, primary_key=True)
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class RateLimit(Base):
     """Rate limiting for external contacts"""
     __tablename__ = "rate_limits"
@@ -241,6 +251,34 @@ async def set_context(session: AsyncSession, key: str, value: str):
         session.add(ctx)
 
     await session.commit()
+
+
+async def save_usage(session: AsyncSession, input_tokens: int, output_tokens: int):
+    """Save Claude API token usage for a request"""
+    session.add(Usage(input_tokens=input_tokens, output_tokens=output_tokens))
+    await session.commit()
+
+
+async def get_usage_stats(session: AsyncSession, days: int = 30):
+    """Get aggregated token usage for the last N days"""
+    from sqlalchemy import func
+    since = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = since.replace(day=since.day - days + 1) if days > 1 else since
+
+    stmt = select(
+        func.sum(Usage.input_tokens).label("total_input"),
+        func.sum(Usage.output_tokens).label("total_output"),
+        func.count(Usage.id).label("total_requests"),
+    ).where(Usage.created_at >= since)
+
+    result = await session.execute(stmt)
+    row = result.one()
+    return {
+        "total_input": row.total_input or 0,
+        "total_output": row.total_output or 0,
+        "total_requests": row.total_requests or 0,
+        "days": days,
+    }
 
 
 async def get_recent_contacts(session: AsyncSession, limit: int = 10) -> List[Contact]:
