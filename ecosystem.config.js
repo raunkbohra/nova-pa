@@ -19,8 +19,7 @@ module.exports = {
     },
     {
       name: "nova-voice",
-      script: "voice_agent/agent.py",
-      args: "start",
+      script: "voice_agent/server.py",
       interpreter: "./venv/bin/python3",
       cwd: "/home/ubuntu/nova-pa",
       watch: false,

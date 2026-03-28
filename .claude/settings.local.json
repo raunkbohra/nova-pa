@@ -13,7 +13,8 @@
       "mcp__plugin_serena_serena__get_symbols_overview",
       "mcp__plugin_serena_serena__search_for_pattern",
       "mcp__plugin_serena_serena__find_symbol",
-      "Skill(commit-commands:commit-push-pr)"
+      "Skill(commit-commands:commit-push-pr)",
+      "WebFetch(domain:www.docs.vobiz.ai)"
     ]
   }
 }
