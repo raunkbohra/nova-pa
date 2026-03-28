@@ -8,7 +8,7 @@ import logging
 import re
 import uuid
 from app.tools.base import BaseTool, ToolResult
-from app.whatsapp import send_text
+from app.whatsapp import send_text, send_template
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +16,14 @@ logger = logging.getLogger(__name__)
 async def _fire_scheduled_whatsapp(phone: str, message: str, job_id: str):
     """Module-level function required by APScheduler job store for scheduled delivery."""
     try:
-        await send_text(phone, message)
-        logger.info(f"Scheduled WhatsApp fired: {job_id} → {phone}")
+        success, error_code = await send_text(phone, message)
+        if not success and error_code == 131047:
+            logger.info(f"24hr window expired for {phone}, falling back to template")
+            await send_template(phone, message)
+        elif not success:
+            logger.error(f"Scheduled WhatsApp failed {job_id}: error_code={error_code}")
+        else:
+            logger.info(f"Scheduled WhatsApp fired: {job_id} → {phone}")
     except Exception as e:
         logger.error(f"Scheduled WhatsApp failed {job_id}: {e}")
 
@@ -63,6 +69,10 @@ Examples:
                 "when": {
                     "type": "string",
                     "description": "When to send (required for schedule): '3pm', 'tomorrow 9am', '2026-04-01 10:00'"
+                },
+                "contact_name": {
+                    "type": "string",
+                    "description": "Recipient's first name (used to personalise template messages if 24hr window expired)"
                 }
             },
             "required": ["phone", "message"]
@@ -75,7 +85,8 @@ Examples:
             phone = "+" + phone
         return phone
 
-    async def execute(self, phone: str, message: str, action: str = "send", **kwargs) -> ToolResult:
+    async def execute(self, phone: str, message: str, action: str = "send",
+                      contact_name: str = "there", **kwargs) -> ToolResult:
         phone = self._normalize_phone(phone)
         if not re.match(r"^\+\d{7,15}$", phone):
             return ToolResult(tool_name=self.name, success=False,
@@ -84,13 +95,28 @@ Examples:
         if action == "schedule":
             return await self._schedule_message(phone, message, **kwargs)
 
-        # Immediate send
-        success = await send_text(phone, message)
+        # Immediate send — try free-form first
+        success, error_code = await send_text(phone, message)
         if success:
             return ToolResult(tool_name=self.name, success=True,
                               data={"status": "sent", "to": phone, "preview": message[:100]})
+
+        # 24-hour window expired → fall back to approved template
+        if error_code == 131047:
+            logger.info(f"24hr window expired for {phone}, trying template fallback")
+            template_ok = await send_template(phone, message, contact_name=contact_name)
+            if template_ok:
+                return ToolResult(tool_name=self.name, success=True, data={
+                    "status": "sent_via_template",
+                    "note": "24hr window expired — sent as approved template instead",
+                    "to": phone,
+                    "preview": message[:100],
+                })
+            return ToolResult(tool_name=self.name, success=False,
+                              error=f"24hr window expired and template send also failed for {phone}.")
+
         return ToolResult(tool_name=self.name, success=False,
-                          error=f"Failed to send to {phone}. Recipient may need to message NOVA first.")
+                          error=f"Failed to send to {phone} (error {error_code}). Recipient may need to message NOVA first.")
 
     async def _schedule_message(self, phone: str, message: str, when: str = None, **kwargs) -> ToolResult:
         if not when:
