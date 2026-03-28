@@ -171,13 +171,25 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
                     content = "[Failed to transcribe voice note]"
         
         elif msg_type == "image":
-            # Image - download and note it (Claude can analyze if provided)
+            # Image — download and pass to Claude Vision for analysis
             media = msg.get("image", {})
             media_id = media.get("id")
             caption = media.get("caption", "")
             if media_id:
-                await handle_image(media_id)
-            content = f"[Image received{': ' + caption if caption else ''}]"
+                image_bytes = await handle_image(media_id)
+                if image_bytes:
+                    import base64
+                    b64 = base64.standard_b64encode(image_bytes).decode()
+                    # Build a vision-capable message (list instead of str)
+                    text_part = caption if caption else "What's in this image? Describe it and tell me if there's anything I should action."
+                    content = [
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+                        {"type": "text", "text": text_part},
+                    ]
+                else:
+                    content = f"[Image received{': ' + caption if caption else ''} — could not download]"
+            else:
+                content = f"[Image received{': ' + caption if caption else ''}]"
         
         elif msg_type == "document":
             # Document

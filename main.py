@@ -15,9 +15,9 @@ from app.briefing import _send_morning_briefing, BRIEFING_JOB_ID
 from app.proactive import (
     _check_unanswered_emails, _post_meeting_followup,
     _contact_checkins, _end_of_day_wrap,
-    _weekly_review, _check_sales_pace,
+    _weekly_review, _check_sales_pace, _monthly_sales_report,
     JOB_UNANSWERED_EMAILS, JOB_POST_MEETING, JOB_CONTACT_CHECKINS, JOB_EOD_WRAP,
-    JOB_WEEKLY_REVIEW, JOB_SALES_PACE,
+    JOB_WEEKLY_REVIEW, JOB_SALES_PACE, JOB_MONTHLY_REPORT,
 )
 
 # Configure logging
@@ -114,6 +114,15 @@ async def lifespan(app):
         replace_existing=True,
     )
     logger.info("✅ Sales pace alert scheduled for 6:00pm NPT daily")
+
+    # Monthly sales report — 1st of month, 9:00am NPT
+    scheduler.add_job(
+        _monthly_sales_report,
+        CronTrigger(day=1, hour=9, minute=0, timezone=timezone('Asia/Kathmandu')),
+        id=JOB_MONTHLY_REPORT,
+        replace_existing=True,
+    )
+    logger.info("✅ Monthly sales report scheduled for 1st of month 9:00am NPT")
 
     yield
 

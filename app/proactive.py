@@ -26,6 +26,7 @@ JOB_CONTACT_CHECKINS = "proactive_contact_checkins"
 JOB_EOD_WRAP = "proactive_eod_wrap"
 JOB_WEEKLY_REVIEW = "proactive_weekly_review"
 JOB_SALES_PACE = "proactive_sales_pace"
+JOB_MONTHLY_REPORT = "proactive_monthly_report"
 
 
 async def _check_unanswered_emails():
@@ -422,3 +423,48 @@ async def _check_sales_pace():
 
     except Exception as e:
         logger.error(f"Proactive sales pace error: {e}")
+
+
+async def _monthly_sales_report():
+    """
+    1st of each month, 9am NPT — full last-month sales report vs 30L target.
+    """
+    from app.whatsapp import send_text
+    from app.config import settings
+    import app.memory as _db
+    from app.memory import get_sales_summary, get_sales_trend
+
+    logger.info("Generating monthly sales report...")
+
+    try:
+        async with _db.AsyncSessionLocal() as session:
+            last_month = await get_sales_summary(session, "last_30_days")
+            trend = await get_sales_trend(session, "last_30_days", "this_month")
+
+        rev = last_month["total_revenue"]
+        orders = last_month["total_orders"]
+        days = last_month["days_logged"]
+        avg = last_month["daily_average"]
+        target = 3_000_000
+        pct = rev / target * 100
+
+        now = datetime.now(NPT)
+        month_name = (now.replace(day=1) - __import__('datetime').timedelta(days=1)).strftime("%B %Y")
+
+        status = "✅" if rev >= target else ("⚠️" if rev >= target * 0.7 else "❌")
+
+        msg = (
+            f"📊 *Monthly Report — {month_name}*\n\n"
+            f"{status} *Revenue: Rs. {rev:,.0f}* ({pct:.1f}% of 30L target)\n"
+            f"• Orders: {orders}\n"
+            f"• Days logged: {days}/30\n"
+            f"• Daily average: Rs. {avg:,.0f}\n"
+            f"• Target: Rs. {target:,.0f}\n"
+            f"• Gap: Rs. {abs(target - rev):,.0f} {'above' if rev >= target else 'below'} target"
+        )
+
+        await send_text(settings.raunak_phone, msg)
+        logger.info("Monthly sales report sent.")
+
+    except Exception as e:
+        logger.error(f"Monthly report error: {e}")

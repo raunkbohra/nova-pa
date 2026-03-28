@@ -52,6 +52,8 @@ Commands you understand:
 - "Help me with [task]" → General assistance
 - "Find [file] in Drive" → drive tool: search
 - "Read that Google Doc / Sheet" → drive tool: read_doc or read_sheet
+- "Show my tasks / add task / done with X" → tasks tool
+- [Image sent] → analyze using vision, describe contents, flag action items
 
 Sales (iwishbag):
 - When Raunk pastes sales figures (revenue, orders), call sales tool with action=log
@@ -111,13 +113,15 @@ class Agent:
         self.conversation_history: List[dict] = []
         self.max_iterations = MAX_ITERATIONS
 
-    async def process_commander_message(self, message: str, session: AsyncSession) -> str:
+    async def process_commander_message(self, message, session: AsyncSession) -> str:
         """
         Process message in Commander Mode (Raunk's personal assistant).
+        `message` is either a str (text) or list (vision: [{type:image,...},{type:text,...}]).
 
         Returns: Response text to send back to Raunk
         """
-        logger.info(f"Processing Commander message: {message[:100]}")
+        msg_preview = message[:100] if isinstance(message, str) else "[vision message]"
+        logger.info(f"Processing Commander message: {msg_preview}")
 
         # Load all memory context (preferences, goals, people, projects)
         all_context = await get_all_context(session)
@@ -139,14 +143,15 @@ class Agent:
                 "content": msg.content
             })
 
-        # Add current message
+        # Add current message (str for text, list for vision)
         messages.append({
             "role": "user",
             "content": message
         })
 
-        # Save to history
-        await save_message(session, "user", message)
+        # Save to history — store vision messages as text summary
+        msg_to_save = message if isinstance(message, str) else "[Image sent by Raunk]"
+        await save_message(session, "user", msg_to_save)
 
         # Call Claude with adaptive thinking
         response = await self._call_claude(
@@ -205,15 +210,22 @@ class Agent:
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet)\b",
+        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete)\b",
         re.IGNORECASE
     )
 
     def _should_force_tool(self, messages: List[dict]) -> bool:
         """Return True if the last user message is clearly an action request."""
         for msg in reversed(messages):
-            if msg.get("role") == "user" and isinstance(msg.get("content"), str):
-                return bool(self._ACTION_PATTERNS.search(msg["content"]))
+            if msg.get("role") == "user":
+                content = msg.get("content")
+                if isinstance(content, str):
+                    return bool(self._ACTION_PATTERNS.search(content))
+                # Vision messages (list) — check text block
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            return bool(self._ACTION_PATTERNS.search(block.get("text", "")))
         return False
 
     async def _call_claude(self, system: str, messages: List[dict],
