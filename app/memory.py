@@ -442,13 +442,19 @@ async def get_sales_summary(session: AsyncSession, period: str = "this_month") -
     expected_by_today = (MONTHLY_TARGET / days_in_month) * today.day
     pct_of_target = (total_revenue / MONTHLY_TARGET * 100) if period == "this_month" else None
 
+    total_cogs = row.total_cogs or 0.0
+    gross_profit = total_revenue - total_cogs
+    margin_pct = (gross_profit / total_revenue * 100) if total_revenue > 0 else None
+
     return {
         "period": period,
         "start": start.isoformat(),
         "end": end.isoformat(),
         "total_revenue": total_revenue,
         "total_orders": row.total_orders or 0,
-        "total_cogs": row.total_cogs or 0.0,
+        "total_cogs": total_cogs,
+        "gross_profit": gross_profit,
+        "margin_pct": round(margin_pct, 1) if margin_pct is not None else None,
         "days_logged": row.days_logged or 0,
         "daily_average": total_revenue / days_in_period if days_in_period > 0 else 0,
         "monthly_target": MONTHLY_TARGET,

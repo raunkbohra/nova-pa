@@ -5,6 +5,7 @@ Handles message processing, tool calls, and conversation management.
 
 import logging
 import re
+import json
 from typing import Optional, List
 from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,6 +61,10 @@ Sales (iwishbag):
 - "How are sales this month?" → sales tool with action=summary, period=this_month
 - "Compare this week vs last week" → sales tool with action=trend
 - Monthly target is Rs. 30L (3,000,000). Always show % of target when reporting sales.
+- When COGS is available, show gross profit and margin % too.
+
+URLs:
+- When Raunk shares a URL to summarize, use the perplexity tool (action=search, query=url) or fetch the page and summarize.
 
 Memory:
 - When you learn a preference → memory tool: remember(key="pref:...", value="...")
@@ -199,14 +204,73 @@ class Agent:
         response = await self._call_claude(
             system=RECEPTIONIST_SYSTEM,
             messages=messages,
-            tools=None,  # Receptionist doesn't have tool access
+            tools=None,
             is_commander=False
         )
 
         # Save response
         await save_external_message(session, phone, "assistant", response)
 
+        # Auto-extract contact info from the conversation so far
+        await self._extract_and_save_contact(phone, message, thread, session)
+
         return response
+
+    async def _extract_and_save_contact(self, phone: str, latest_message: str,
+                                         prior_thread, session: AsyncSession):
+        """
+        After each receptionist exchange, scan the full thread for name/company/purpose
+        and update the Contact record + memory if new info is found.
+        """
+        from app.memory import get_or_create_contact, set_context
+
+        # Build transcript from prior thread + latest message
+        lines = [f"{m.role}: {m.content}" for m in prior_thread]
+        lines.append(f"user: {latest_message}")
+        transcript = "\n".join(lines[-10:])  # last 10 lines is enough
+
+        extract_prompt = f"""Extract contact info from this WhatsApp conversation. Return ONLY a JSON object with these fields (null if not mentioned):
+{{"name": "...", "company": "...", "purpose": "..."}}
+
+Conversation:
+{transcript}
+
+JSON:"""
+
+        try:
+            extraction = await client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=200,
+                messages=[{"role": "user", "content": extract_prompt}],
+            )
+            raw = extraction.content[0].text.strip()
+            # Pull out JSON block
+            import re as _re
+            match = _re.search(r'\{.*\}', raw, _re.DOTALL)
+            if not match:
+                return
+            data = json.loads(match.group())
+            name = data.get("name")
+            company = data.get("company")
+            purpose = data.get("purpose")
+
+            if name or company or purpose:
+                contact = await get_or_create_contact(session, phone, name=name, company=company)
+                if purpose and not contact.purpose:
+                    contact.purpose = purpose
+                    await session.commit()
+                # Also save to memory for NOVA's context in Commander mode
+                if name:
+                    key = f"person:{name.lower().replace(' ', '_')}"
+                    value = f"Phone: {phone}"
+                    if company:
+                        value += f", Company: {company}"
+                    if purpose:
+                        value += f", Purpose: {purpose}"
+                    await set_context(session, key, value)
+                    logger.info(f"Auto-saved contact to memory: {key}")
+        except Exception as e:
+            logger.debug(f"Contact extraction failed (non-critical): {e}")
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(

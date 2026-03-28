@@ -7,9 +7,17 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 import logging
 import json
+import re
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+_URL_RE = re.compile(r'^https?://\S+$', re.IGNORECASE)
+
+
+def _is_url_only(text: str) -> bool:
+    """Return True if the message is just a bare URL with no other text."""
+    return bool(_URL_RE.match(text.strip()))
 
 app = FastAPI(title="NOVA WhatsApp Assistant")
 
@@ -157,6 +165,9 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
         
         if msg_type == "text":
             content = msg.get("text", {}).get("body", "")
+            # Auto-enrich: if message is just a URL, prepend a summarize instruction
+            if content and _is_url_only(content):
+                content = f"Fetch and summarize this URL for me: {content.strip()}"
         
         elif msg_type == "audio":
             # Voice note - transcribe it
