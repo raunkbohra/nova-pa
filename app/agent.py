@@ -15,7 +15,7 @@ from app.memory import (
     save_external_message, get_external_thread, save_usage, get_all_context
 )
 import app.memory as _db
-from app.tools import get_claude_tools, get_tool
+from app.tools import get_claude_tools, get_tool, get_receptionist_tools
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ Decision framework:
 Special cases:
 - VIP numbers skip all qualification (auto-book immediately)
 - "URGENT" or "Emergency" messages → Always ping Raunk immediately
-- "Just tell Raunk..." → Relay the message + confirm delivery
+- "Just tell Raunk..." → call the send_whatsapp tool with Raunk's number and the verbatim message, then confirm delivery to the sender
 - Known repeat contacts → Greet by name, no re-qualification
 
 What you never reveal:
@@ -209,11 +209,15 @@ class Agent:
         # Save to thread
         await save_external_message(session, phone, "user", message)
 
-        # Call Claude
+        # Build system prompt with Raunk's relay number so Claude knows where to send
+        system = RECEPTIONIST_SYSTEM + f"\n\nRaunk's WhatsApp number for relaying messages: {settings.raunak_phone}"
+
+        # Call Claude with send_whatsapp tool so relay intent can actually be executed
+        receptionist_tools = get_receptionist_tools() or None
         response = await self._call_claude(
-            system=RECEPTIONIST_SYSTEM,
+            system=system,
             messages=messages,
-            tools=None,
+            tools=receptionist_tools,
             is_commander=False
         )
 
@@ -381,7 +385,7 @@ JSON:"""
             for block in response.content:
                 if block.type == "text":
                     text_blocks.append(block.text)
-                elif block.type == "tool_use" and is_commander:
+                elif block.type == "tool_use" and tools:
                     tool_calls.append(block)
 
             # If no tool calls, save usage and return

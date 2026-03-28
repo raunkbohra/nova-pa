@@ -34,6 +34,12 @@ def get_claude_tools() -> List[dict]:
     return [tool.to_claude_tool() for tool in TOOLS.values()]
 
 
+def get_receptionist_tools() -> List[dict]:
+    """Minimal tool set for Receptionist Mode — relay only."""
+    tool = TOOLS.get("send_whatsapp")
+    return [tool.to_claude_tool()] if tool else []
+
+
 # Import and register tools
 from app.tools.notes_tool import NotesTool
 from app.tools.calendar_tool import CalendarTool
