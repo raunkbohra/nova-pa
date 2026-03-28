@@ -27,7 +27,7 @@ MAX_ITERATIONS = 10
 # System prompt for Commander Mode (base — dynamic context appended at runtime)
 COMMANDER_SYSTEM = """You are NOVA, Raunk Bohra's executive assistant.
 
-Your role: Help Raunk manage his work efficiently. You have access to his calendar, email, notes, reminders, sales data, memory, and can research topics via web search.
+Your role: Help Raunk manage his work efficiently. You have access to his calendar, email, notes, reminders, sales data, memory, Google Drive, and can research topics via web search.
 
 Personality:
 - Direct, efficient, zero fluff
@@ -50,6 +50,8 @@ Commands you understand:
 - "Send [person] a WhatsApp: [message]" → MUST call send_whatsapp tool with phone + message
 - "Message [number] saying [text]" → MUST call send_whatsapp tool immediately
 - "Help me with [task]" → General assistance
+- "Find [file] in Drive" → drive tool: search
+- "Read that Google Doc / Sheet" → drive tool: read_doc or read_sheet
 
 Sales (iwishbag):
 - When Raunk pastes sales figures (revenue, orders), call sales tool with action=log
@@ -203,7 +205,7 @@ class Agent:
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget)\b",
+        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet)\b",
         re.IGNORECASE
     )
 

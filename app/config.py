@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     openweather_api_key: Optional[str] = None
     news_api_key: Optional[str] = None
     perplexity_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None  # For Whisper voice transcription
 
     # Database (PostgreSQL with asyncpg)
     database_url: str

@@ -7,6 +7,8 @@ Jobs:
   - _post_meeting_followup: Every 30 min — meetings that just ended
   - _contact_checkins: Monday 9am NPT — contacts not heard from in 14+ days
   - _end_of_day_wrap: Daily 8pm NPT — full day summary
+  - _weekly_review: Monday 8am NPT — week recap + goals + sales
+  - _check_sales_pace: Daily 6pm NPT — alert if behind daily target
 """
 
 import logging
@@ -22,6 +24,8 @@ JOB_UNANSWERED_EMAILS = "proactive_unanswered_emails"
 JOB_POST_MEETING = "proactive_post_meeting"
 JOB_CONTACT_CHECKINS = "proactive_contact_checkins"
 JOB_EOD_WRAP = "proactive_eod_wrap"
+JOB_WEEKLY_REVIEW = "proactive_weekly_review"
+JOB_SALES_PACE = "proactive_sales_pace"
 
 
 async def _check_unanswered_emails():
@@ -287,3 +291,134 @@ async def _end_of_day_wrap():
     message = "\n".join(sections).rstrip()
     await send_text(settings.raunak_phone, message)
     logger.info("End-of-day wrap sent.")
+
+
+async def _weekly_review():
+    """
+    Monday 8am NPT — weekly recap: last week's sales, this week's calendar highlights,
+    and a summary of active goals from memory.
+    """
+    from app.whatsapp import send_text
+    from app.config import settings
+    from app.tools.calendar_tool import CalendarTool
+    import app.memory as _db
+    from app.memory import get_sales_summary, get_all_context
+
+    logger.info("Generating weekly review...")
+
+    now = datetime.now(NPT)
+    sections = [f"📋 *Weekly Review — {now.strftime('%b %d, %Y')}*\n"]
+    has_content = False
+
+    # --- Last week's sales ---
+    try:
+        async with _db.AsyncSessionLocal() as session:
+            sales = await get_sales_summary(session, "last_7_days")
+        rev = sales["total_revenue"]
+        orders = sales["total_orders"]
+        days = sales["days_logged"]
+        if rev > 0:
+            target_week = 3_000_000 / 4.33  # ~30L / 4.33 weeks
+            pct = rev / target_week * 100
+            sections.append("📊 *LAST 7 DAYS — iwishbag*")
+            sections.append(f"• Revenue: Rs. {rev:,.0f} ({pct:.0f}% of weekly target)")
+            sections.append(f"• Orders: {orders} | Days logged: {days}/7")
+            sections.append(f"• Daily avg: Rs. {sales['daily_average']:,.0f}")
+            sections.append("")
+            has_content = True
+    except Exception as e:
+        logger.warning(f"Weekly review: sales error: {e}")
+
+    # --- This week's calendar ---
+    try:
+        cal = CalendarTool()
+        result = await cal.execute(action="list", time_range="this_week", limit=10)
+        if result.success and result.data.get("events"):
+            events = result.data["events"]
+            timed = [e for e in events if "T" in e.get("start", "")]
+            if timed:
+                sections.append("📅 *THIS WEEK*")
+                for e in timed[:5]:
+                    start_str = e.get("start", "")
+                    try:
+                        dt = datetime.fromisoformat(start_str.replace("Z", "+00:00")).astimezone(NPT)
+                        label = dt.strftime("%a %d %b, %I:%M%p").lstrip("0")
+                    except Exception:
+                        label = start_str[:10]
+                    sections.append(f"• {label} — {e.get('title', 'Untitled')}")
+                sections.append("")
+                has_content = True
+    except Exception as e:
+        logger.warning(f"Weekly review: calendar error: {e}")
+
+    # --- Active goals from memory ---
+    try:
+        async with _db.AsyncSessionLocal() as session:
+            ctx = await get_all_context(session)
+        goals = {k: v for k, v in ctx.items() if k.startswith("goal:")}
+        if goals:
+            sections.append("🎯 *ACTIVE GOALS*")
+            for k, v in goals.items():
+                label = k.replace("goal:", "").replace("_", " ").title()
+                sections.append(f"• {label}: {v}")
+            sections.append("")
+            has_content = True
+    except Exception as e:
+        logger.warning(f"Weekly review: memory error: {e}")
+
+    if not has_content:
+        logger.info("Weekly review: nothing to report, skipping")
+        return
+
+    message = "\n".join(sections).rstrip()
+    await send_text(settings.raunak_phone, message)
+    logger.info("Weekly review sent.")
+
+
+async def _check_sales_pace():
+    """
+    Daily 6pm NPT — if today's sales haven't been logged OR revenue is below
+    the daily target pace, send an alert.
+    """
+    from app.whatsapp import send_text
+    from app.config import settings
+    import app.memory as _db
+    from app.memory import get_sales_summary
+
+    logger.info("Proactive: checking sales pace...")
+
+    try:
+        import calendar as cal_lib
+        now = datetime.now(NPT)
+        days_in_month = cal_lib.monthrange(now.year, now.month)[1]
+        daily_target = 3_000_000 / days_in_month
+
+        async with _db.AsyncSessionLocal() as session:
+            today = await get_sales_summary(session, "today")
+
+        revenue_today = today["total_revenue"]
+
+        if revenue_today == 0:
+            msg = (
+                f"📊 *Sales check — {now.strftime('%b %d')}*\n"
+                f"No sales logged yet today.\n"
+                f"Daily target: Rs. {daily_target:,.0f} — want to log today's figures?"
+            )
+            await send_text(settings.raunak_phone, msg)
+            logger.info("Proactive: sent sales reminder (no data)")
+        elif revenue_today < daily_target * 0.7:
+            pct = revenue_today / daily_target * 100
+            gap = daily_target - revenue_today
+            msg = (
+                f"📊 *Sales alert — {now.strftime('%b %d')}*\n"
+                f"• Today: Rs. {revenue_today:,.0f} ({pct:.0f}% of target)\n"
+                f"• Gap: Rs. {gap:,.0f} below daily pace\n"
+                f"• Monthly target: Rs. 30L"
+            )
+            await send_text(settings.raunak_phone, msg)
+            logger.info(f"Proactive: sent sales pace alert ({pct:.0f}% of target)")
+        else:
+            logger.info(f"Proactive: sales pace OK (Rs. {revenue_today:,.0f})")
+
+    except Exception as e:
+        logger.error(f"Proactive sales pace error: {e}")

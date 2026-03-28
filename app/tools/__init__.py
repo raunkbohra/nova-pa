@@ -47,6 +47,7 @@ from app.tools.contacts_tool import ContactsTool
 from app.tools.cost_tool import CostTool
 from app.tools.memory_tool import MemoryTool
 from app.tools.sales_tool import SalesTool
+from app.tools.drive_tool import DriveTool
 
 register_tool(NotesTool())
 register_tool(CalendarTool())
@@ -60,3 +61,4 @@ register_tool(ContactsTool())
 register_tool(CostTool())
 register_tool(MemoryTool())
 register_tool(SalesTool())
+register_tool(DriveTool())

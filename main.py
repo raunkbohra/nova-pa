@@ -15,7 +15,9 @@ from app.briefing import _send_morning_briefing, BRIEFING_JOB_ID
 from app.proactive import (
     _check_unanswered_emails, _post_meeting_followup,
     _contact_checkins, _end_of_day_wrap,
+    _weekly_review, _check_sales_pace,
     JOB_UNANSWERED_EMAILS, JOB_POST_MEETING, JOB_CONTACT_CHECKINS, JOB_EOD_WRAP,
+    JOB_WEEKLY_REVIEW, JOB_SALES_PACE,
 )
 
 # Configure logging
@@ -94,6 +96,24 @@ async def lifespan(app):
         replace_existing=True,
     )
     logger.info("✅ End-of-day wrap scheduled for 8:00pm NPT daily")
+
+    # Weekly review — Monday 8:00am NPT
+    scheduler.add_job(
+        _weekly_review,
+        CronTrigger(day_of_week="mon", hour=8, minute=0, timezone=timezone('Asia/Kathmandu')),
+        id=JOB_WEEKLY_REVIEW,
+        replace_existing=True,
+    )
+    logger.info("✅ Weekly review scheduled for Monday 8:00am NPT")
+
+    # Sales pace alert — daily 6:00pm NPT
+    scheduler.add_job(
+        _check_sales_pace,
+        CronTrigger(hour=18, minute=0, timezone=timezone('Asia/Kathmandu')),
+        id=JOB_SALES_PACE,
+        replace_existing=True,
+    )
+    logger.info("✅ Sales pace alert scheduled for 6:00pm NPT daily")
 
     yield
 

@@ -6,17 +6,26 @@ Handles voice notes and audio responses.
 import logging
 import io
 from typing import Optional
-from pathlib import Path
 import httpx
-from openai import OpenAI
-from gtts import gTTS
 from app.config import settings
-from app.whatsapp import download_media, send_audio
+from app.whatsapp import download_media
 
 logger = logging.getLogger(__name__)
 
-# OpenAI Whisper client
-openai_client = OpenAI(api_key=settings.anthropic_api_key)  # Note: should use OpenAI key
+# OpenAI Whisper client — initialised lazily so a missing key doesn't crash startup
+_openai_client = None
+
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        if not settings.openai_api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY not set — add it to .env to enable voice transcription"
+            )
+        from openai import OpenAI
+        _openai_client = OpenAI(api_key=settings.openai_api_key)
+    return _openai_client
 
 
 async def transcribe_voice_note(media_id: str) -> Optional[str]:
@@ -41,10 +50,9 @@ async def transcribe_voice_note(media_id: str) -> Optional[str]:
         audio_file = io.BytesIO(audio_data)
         audio_file.name = f"voice_{media_id}.ogg"  # Meta sends OGG format
         
-        transcript = openai_client.audio.transcriptions.create(
+        transcript = _get_openai_client().audio.transcriptions.create(
             model="whisper-1",
             file=audio_file,
-            language="en"  # Can be extended to support multiple languages
         )
         
         text = transcript.text.strip()
@@ -58,32 +66,8 @@ async def transcribe_voice_note(media_id: str) -> Optional[str]:
 
 
 async def synthesize_speech(text: str, language: str = "en") -> Optional[bytes]:
-    """
-    Convert text to speech using gTTS.
-    
-    Args:
-        text: Text to convert to speech
-        language: Language code (default: 'en' for English)
-        
-    Returns:
-        Audio bytes (MP3) or None if synthesis fails
-    """
-    try:
-        # Generate speech with gTTS
-        tts = gTTS(text=text, lang=language, slow=False)
-        
-        # Write to bytes buffer
-        audio_buffer = io.BytesIO()
-        tts.write_to_fp(audio_buffer)
-        audio_buffer.seek(0)
-        
-        logger.info(f"Synthesized speech: {text[:50]}...")
-        
-        return audio_buffer.getvalue()
-        
-    except Exception as e:
-        logger.error(f"Failed to synthesize speech: {e}")
-        return None
+    """Stub — TTS not yet configured (needs audio hosting)."""
+    return None
 
 
 async def send_voice_response(phone: str, text: str, language: str = "en") -> bool:
