@@ -27,6 +27,7 @@ JOB_EOD_WRAP = "proactive_eod_wrap"
 JOB_WEEKLY_REVIEW = "proactive_weekly_review"
 JOB_SALES_PACE = "proactive_sales_pace"
 JOB_MONTHLY_REPORT = "proactive_monthly_report"
+JOB_PRE_MEETING = "proactive_pre_meeting"
 
 
 async def _check_unanswered_emails():
@@ -468,3 +469,89 @@ async def _monthly_sales_report():
 
     except Exception as e:
         logger.error(f"Monthly report error: {e}")
+
+
+async def _pre_meeting_prep():
+    """
+    Every 30 min — find meetings starting in the next 30 minutes and send prep context.
+    Skips all-day events and meetings already pinged (tracked via memory key).
+    """
+    from app.whatsapp import send_text
+    from app.config import settings
+    from app.tools.calendar_tool import CalendarTool
+    from app.tools.perplexity_tool import PerplexityTool
+    import app.memory as _db
+    from app.memory import get_context, set_context
+
+    logger.info("Proactive: checking pre-meeting prep...")
+
+    try:
+        cal = CalendarTool()
+        result = await cal.execute(action="list", limit=10)
+        if not result.success or not result.data.get("events"):
+            return
+
+        now = datetime.now(NPT)
+        window_end = now + timedelta(minutes=35)
+        window_start = now + timedelta(minutes=5)  # don't ping if already started
+
+        for event in result.data["events"]:
+            start_str = event.get("start", "")
+            title = event.get("title", "Untitled")
+
+            if not start_str or "T" not in start_str:
+                continue
+
+            try:
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00")).astimezone(NPT)
+            except Exception:
+                continue
+
+            if not (window_start <= start_dt <= window_end):
+                continue
+
+            # Check if already prepped for this event
+            event_id = event.get("id", start_str)
+            mem_key = f"context:prepped_{event_id}"
+            async with _db.AsyncSessionLocal() as session:
+                already_prepped = await get_context(session, mem_key)
+
+            if already_prepped:
+                continue
+
+            # Build prep message
+            time_label = start_dt.strftime("%I:%M%p").lstrip("0")
+            mins_away = int((start_dt - now).total_seconds() / 60)
+            lines = [f"📅 *{title}* in {mins_away} min ({time_label})\n"]
+
+            # Research attendees/topic if meaningful title
+            skip_words = {"lunch", "break", "block", "focus", "personal", "hold"}
+            if not any(w in title.lower() for w in skip_words) and len(title) > 4:
+                try:
+                    perplexity = PerplexityTool()
+                    research = await perplexity.execute(
+                        action="search",
+                        query=f"Who is {title} and what should I know before a meeting with them? Brief background.",
+                    )
+                    if research.success and research.data.get("answer"):
+                        answer = research.data["answer"][:400]
+                        lines.append(f"*Background:*\n{answer}")
+                except Exception:
+                    pass
+
+            description = event.get("description", "")
+            if description:
+                lines.append(f"\n*Agenda:* {description[:200]}")
+
+            lines.append("\nWant me to pull anything else?")
+
+            await send_text(settings.raunak_phone, "\n".join(lines))
+
+            # Mark as prepped so we don't repeat
+            async with _db.AsyncSessionLocal() as session:
+                await set_context(session, mem_key, "1")
+
+            logger.info(f"Proactive: sent pre-meeting prep for '{title}'")
+
+    except Exception as e:
+        logger.error(f"Proactive pre-meeting error: {e}")

@@ -16,8 +16,9 @@ from app.proactive import (
     _check_unanswered_emails, _post_meeting_followup,
     _contact_checkins, _end_of_day_wrap,
     _weekly_review, _check_sales_pace, _monthly_sales_report,
+    _pre_meeting_prep,
     JOB_UNANSWERED_EMAILS, JOB_POST_MEETING, JOB_CONTACT_CHECKINS, JOB_EOD_WRAP,
-    JOB_WEEKLY_REVIEW, JOB_SALES_PACE, JOB_MONTHLY_REPORT,
+    JOB_WEEKLY_REVIEW, JOB_SALES_PACE, JOB_MONTHLY_REPORT, JOB_PRE_MEETING,
 )
 
 # Configure logging
@@ -123,6 +124,15 @@ async def lifespan(app):
         replace_existing=True,
     )
     logger.info("✅ Monthly sales report scheduled for 1st of month 9:00am NPT")
+
+    # Pre-meeting prep — every 30 minutes (same cadence as post-meeting)
+    scheduler.add_job(
+        _pre_meeting_prep,
+        IntervalTrigger(minutes=30),
+        id=JOB_PRE_MEETING,
+        replace_existing=True,
+    )
+    logger.info("✅ Pre-meeting prep scheduled every 30 minutes")
 
     yield
 

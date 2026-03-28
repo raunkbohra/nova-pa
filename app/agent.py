@@ -54,7 +54,10 @@ Commands you understand:
 - "Find [file] in Drive" → drive tool: search
 - "Read that Google Doc / Sheet" → drive tool: read_doc or read_sheet
 - "Show my tasks / add task / done with X" → tasks tool
+- "Spent Rs. X on ads today" → expense tool: log
+- "What's my actual profit this month?" → expense tool: profit
 - [Image sent] → analyze using vision, describe contents, flag action items
+- /help /brief /tasks /sales /memory /cost → instant slash commands (no AI loop)
 
 Sales (iwishbag):
 - When Raunk pastes sales figures (revenue, orders), call sales tool with action=log
@@ -274,7 +277,7 @@ JSON:"""
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete)\b",
+        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin)\b",
         re.IGNORECASE
     )
 

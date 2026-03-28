@@ -227,10 +227,24 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
             commander_phones.add(settings.raunak_phone2.strip())
         is_commander = from_phone in commander_phones
         
+        # Slash command fast path (Commander only)
+        if is_commander and isinstance(content, str) and content.strip().startswith("/"):
+            from app.slash_commands import is_slash_command, handle_slash_command
+            if is_slash_command(content):
+                # /remind passes through to agent; others are handled directly
+                slash_response = await handle_slash_command(content)
+                if slash_response is not None:
+                    from app.whatsapp import send_text
+                    await send_text(from_phone, slash_response)
+                    return
+                elif content.strip().lower().startswith("/remind "):
+                    # Rewrite to natural language for agent
+                    content = "Set a reminder: " + content.strip()[8:]
+
         # Get database session and agent
         async with AsyncSessionLocal() as session:
             agent = Agent()
-            
+
             # Process message through appropriate mode
             if is_commander:
                 logger.info(f"Commander Mode: {from_phone}")
@@ -238,7 +252,7 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
             else:
                 logger.info(f"Receptionist Mode: {from_phone}")
                 response = await agent.process_receptionist_message(from_phone, content, session)
-            
+
             # Send response back
             from app.whatsapp import send_text
             await send_text(from_phone, response)
