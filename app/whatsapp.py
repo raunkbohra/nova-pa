@@ -99,17 +99,17 @@ _DEFAULT_TEMPLATE = "ping_contact"
 # Format: list of body text variable values ({{1}}, {{2}}, ...)
 # We fill them from the original message text.
 _TEMPLATE_BODY_VARS: dict[str, list[str]] = {
-    "ping_contact":       ["{name}", "{message}"],
-    "followup_contact":   ["{name}", "{message}"],
-    "request_meeting":    ["{name}", "{message}"],
-    "nova_intro":         ["{name}"],
-    "remind_meeting":     ["{name}", "{meeting_time}"],
-    "confirm_meeting":    ["{name}", "{meeting_time}"],
-    "intro_contact":      ["{name}"],
-    "after_meeting":      ["{name}", "{message}"],
-    "not_available":      ["{name}"],
-    "catch_up":           ["{name}", "{message}"],
-    "iwishbag_customer":  ["{name}", "{message}"],
+    "ping_contact":       ["{name}", "{message}"],           # 2 params
+    "followup_contact":   ["{name}", "{message}", "{note}"], # 3 params
+    "request_meeting":    ["{name}", "{message}", "{note}"], # 3 params
+    "nova_intro":         ["{name}", "{message}"],           # 2 params
+    "remind_meeting":     ["{name}", "{meeting_time}"],      # 2 params
+    "confirm_meeting":    ["{name}", "{meeting_time}", "{meeting_time2}"],  # 3 params
+    "intro_contact":      ["{name}", "{message}"],           # 2 params
+    "after_meeting":      ["{name}", "{message}"],           # 2 params
+    "not_available":      ["{name}", "{message}"],           # 2 params
+    "catch_up":           ["{name}", "{message}"],           # 2 params (pending)
+    "iwishbag_customer":  ["{name}", "{message}"],           # 2 params (pending)
 }
 
 
@@ -151,10 +151,12 @@ async def send_template(
         if var == "{name}":
             params.append({"type": "text", "text": contact_name})
         elif var == "{message}":
-            # Trim message to fit WhatsApp limits
-            params.append({"type": "text", "text": message[:1000]})
-        elif var == "{meeting_time}":
+            params.append({"type": "text", "text": message[:900]})
+        elif var == "{meeting_time}" or var == "{meeting_time2}":
             params.append({"type": "text", "text": meeting_time or "our scheduled time"})
+        elif var == "{note}":
+            # Third slot — use a short version of message or generic text
+            params.append({"type": "text", "text": message[:200] if message else "Please let me know if you are available."})
 
     components = []
     if params:
