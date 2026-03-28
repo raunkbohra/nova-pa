@@ -24,7 +24,7 @@ Base = declarative_base()
 # ============================================================================
 
 class Message(Base):
-    """Raunak's conversation history (rolling 50 messages)"""
+    """Raunk's conversation history (rolling 50 messages)"""
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True)
@@ -60,7 +60,7 @@ class Contact(Base):
 
 
 class Note(Base):
-    """Raunak's second brain with full-text search"""
+    """Raunk's second brain with full-text search"""
     __tablename__ = "notes"
 
     id = Column(Integer, primary_key=True)
@@ -168,7 +168,7 @@ async def close_db():
 # ============================================================================
 
 async def save_message(session: AsyncSession, role: str, content: str):
-    """Save message to Raunak's conversation"""
+    """Save message to Raunk's conversation"""
     msg = Message(role=role, content=content)
     session.add(msg)
     await session.commit()
@@ -245,7 +245,7 @@ async def search_notes(session: AsyncSession, query: str) -> List[Note]:
 
 
 async def get_context(session: AsyncSession, key: str) -> Optional[str]:
-    """Get NOVA context value (Raunak's info)"""
+    """Get NOVA context value (Raunk's info)"""
     stmt = select(NovaContext).where(NovaContext.key == key)
     result = await session.execute(stmt)
     ctx = result.scalar_one_or_none()

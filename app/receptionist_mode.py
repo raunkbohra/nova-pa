@@ -19,7 +19,7 @@ class ReceptionistQualifier:
     """Handles qualification of external contacts"""
     
     GREETING = (
-        "Hi! I'm NOVA, Raunak's executive assistant. "
+        "Hi! I'm NOVA, Raunk's executive assistant. "
         "How can I help you today?"
     )
     
@@ -151,7 +151,7 @@ class ReceptionistQualifier:
     
     async def handle_auto_book(self, phone: str, contact_name: str, company: str,
                               purpose: str, session: AsyncSession) -> str:
-        """Auto-book meeting in Raunak's calendar"""
+        """Auto-book meeting in Raunk's calendar"""
         # TODO: Call calendar_tool.py to find free slots and book
         logger.info(f"Auto-booking meeting with {contact_name} from {company}")
         
@@ -205,7 +205,7 @@ class ReceptionistQualifier:
     async def handle_raunak_response(self, phone: str, response: str,
                                    session: AsyncSession) -> str:
         """
-        Handle Raunak's YES/NO/LATER response to contact request.
+        Handle Raunk's YES/NO/LATER response to contact request.
         Called after Raunak replies to the approval message.
         """
         response_lower = response.lower().strip()

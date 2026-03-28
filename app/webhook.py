@@ -43,7 +43,7 @@ async def privacy_policy():
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:0 20px">
     <h1>NOVA Privacy Policy</h1>
-    <p>NOVA is a private WhatsApp assistant for personal use by Raunak Bohra.</p>
+    <p>NOVA is a private WhatsApp assistant for personal use by Raunk Bohra.</p>
     <p><strong>Data collected:</strong> WhatsApp messages sent to this assistant are processed to generate responses. Messages are stored on a private server and not shared with third parties.</p>
     <p><strong>Data retention:</strong> Conversation history is retained for context and can be deleted upon request.</p>
     <p><strong>Contact:</strong> raunkbohra@gmail.com</p>

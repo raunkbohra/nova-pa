@@ -1,5 +1,5 @@
 """
-Notes Tool — Raunak's second brain with full-text search.
+Notes Tool — Raunk's second brain with full-text search.
 Save, retrieve, search notes with tags.
 """
 
@@ -24,7 +24,7 @@ class NotesTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Manage Raunak's second brain. Save, search, and retrieve notes with tags.
+        return """Manage Raunk's second brain. Save, search, and retrieve notes with tags.
 
 Examples:
 - "Note: Series A target ₹5Cr, timeline Q3"

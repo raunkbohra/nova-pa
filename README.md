@@ -1,6 +1,6 @@
 # NOVA — WhatsApp AI Executive Assistant
 
-**NOVA** is a dual-mode WhatsApp personal assistant for Raunak Bohra, running 24/7 on Hetzner with Cloudflare Tunnel. Powered by Claude Opus 4.6, NOVA handles calendar, email, notes, reminders, and intelligently routes external contacts like a sharp executive assistant.
+**NOVA** is a dual-mode WhatsApp personal assistant for Raunk Bohra, running 24/7 on Hetzner with Cloudflare Tunnel. Powered by Claude Opus 4.6, NOVA handles calendar, email, notes, reminders, and intelligently routes external contacts like a sharp executive assistant.
 
 ## Quick Links
 

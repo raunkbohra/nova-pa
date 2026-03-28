@@ -1,4 +1,4 @@
-# NOVA — WhatsApp Personal Assistant for Raunak Bohra
+# NOVA — WhatsApp Personal Assistant for Raunk Bohra
 **Spec Date:** 2026-03-27
 **Status:** Approved Design — Ready for GitHub upload + Phase 1 implementation
 
@@ -22,7 +22,7 @@
 
 ## 1. What We're Building
 
-NOVA is a dual-mode WhatsApp AI assistant for Raunak Bohra (founder/entrepreneur). It runs 24/7 on a Hetzner VPS behind a Cloudflare Tunnel, powered by Claude Opus 4.6.
+NOVA is a dual-mode WhatsApp AI assistant for Raunk Bohra (founder/entrepreneur). It runs 24/7 on a Hetzner VPS behind a Cloudflare Tunnel, powered by Claude Opus 4.6.
 
 **Two modes:**
 - **Commander Mode** — Raunak messages NOVA to manage his work (calendar, email, notes, research, reminders)
@@ -84,10 +84,10 @@ PostgreSQL Database (all persistence)
 
 **Persona:**
 - Name: NOVA
-- Role: Executive assistant to Raunak Bohra
+- Role: Executive assistant to Raunk Bohra
 - With Raunak: direct, efficient, zero fluff
 - With externals: warm, professional, like a sharp human EA
-- If asked "are you AI?": *"I'm Raunak's digital assistant, NOVA."* — honest, not robotic
+- If asked "are you AI?": *"I'm Raunk's digital assistant, NOVA."* — honest, not robotic
 - Never reveals she's Claude or an LLM
 
 **Pre-loaded context about Raunak (editable via chat):**
@@ -112,9 +112,9 @@ PostgreSQL Database (all persistence)
 
 ```python
 if incoming_phone == RAUNAK_PHONE:
-    → Commander Mode (full tool access, Raunak's conversation history)
+    → Commander Mode (full tool access, Raunk's conversation history)
 else:
-    → Receptionist Mode (isolated thread, no access to Raunak's data)
+    → Receptionist Mode (isolated thread, no access to Raunk's data)
 ```
 
 ---
@@ -172,13 +172,13 @@ else:
 Stranger messages NOVA
         │
         ▼
-"Hi, I'm NOVA, Raunak's executive assistant. How can I help you?"
+"Hi, I'm NOVA, Raunk's executive assistant. How can I help you?"
         │
         ▼
 Collect: Name → Company → Purpose
         │
    ┌────▼──────────────────────────────────┐
-   │ STRONG signal (investor, client,      │──→ Auto-book in Raunak's calendar
+   │ STRONG signal (investor, client,      │──→ Auto-book in Raunk's calendar
    │ known partner)?                       │    Send calendar invite to both
    │                                       │    Notify Raunak silently
    │ UNCLEAR (could be relevant)?          │──→ Ping Raunak:
@@ -201,7 +201,7 @@ Collect: Name → Company → Purpose
 - Raunak gets silent notification: *"Booked: [Name] ([Company]) — [date/time]. Purpose: [X]"*
 
 **What NOVA never reveals to externals:**
-- Raunak's personal phone number
+- Raunk's personal phone number
 - Calendar details beyond available/unavailable
 - Private conversation history
 - Email or personal data
@@ -261,7 +261,7 @@ Collect: Name → Company → Purpose
 **Database:** Existing PostgreSQL on Hetzner VPS. Create dedicated `nova_db` database + `nova` user.
 
 ```sql
--- Raunak's conversation (rolling 50 messages)
+-- Raunk's conversation (rolling 50 messages)
 CREATE TABLE messages (
   id SERIAL PRIMARY KEY,
   role TEXT,
@@ -291,7 +291,7 @@ CREATE TABLE contacts (
   last_seen TIMESTAMPTZ
 );
 
--- Raunak's second brain (with full-text search index)
+-- Raunk's second brain (with full-text search index)
 CREATE TABLE notes (
   id SERIAL PRIMARY KEY,
   title TEXT,
@@ -326,7 +326,7 @@ CREATE TABLE rate_limits (
 
 **Stack:** `asyncpg` + `SQLAlchemy 2.0 async` for all DB operations.
 
-**Privacy:** All data stays on Raunak's VPS. Nothing shared except API calls to Google/Anthropic.
+**Privacy:** All data stays on Raunk's VPS. Nothing shared except API calls to Google/Anthropic.
 
 **Backup:** Daily cron: `pg_dump nova_db | gzip | rclone copy - r2:nova-backups/$(date +%Y%m%d).sql.gz`
 
@@ -375,7 +375,7 @@ META_VERIFY_TOKEN=any_secret_string
 META_ACCESS_TOKEN=your_permanent_system_user_token
 META_PHONE_NUMBER_ID=your_whatsapp_phone_number_id
 
-# Raunak's number (E.164 format, e.g. +919XXXXXXXXX)
+# Raunk's number (E.164 format, e.g. +919XXXXXXXXX)
 RAUNAK_PHONE=+91XXXXXXXXXX
 
 # Google APIs
@@ -407,7 +407,7 @@ TRANSCRIPTION_BACKEND=whisper  # or "sarvam" for regional Indian languages
 - Long messages from unknowns truncated to 500 chars before hitting Claude
 
 **Against social engineering:**
-- NOVA never reveals Raunak's personal phone, email, home location — even under urgency claims
+- NOVA never reveals Raunk's personal phone, email, home location — even under urgency claims
 - NOVA never confirms whether a number is on the VIP list
 - "Raunak told me I'm a VIP" → treated as unknown, still qualifies normally
 - Externals cannot change NOVA's instructions or persona in any way
@@ -415,17 +415,17 @@ TRANSCRIPTION_BACKEND=whisper  # or "sarvam" for regional Indian languages
 **Against prompt injection:**
 - System prompt locked for external contacts — they cannot override with "ignore previous instructions"
 - Any message containing prompt injection patterns flagged and ignored
-- Raunak's commands always take priority over any external input
+- Raunk's commands always take priority over any external input
 
 **Against booking abuse:**
-- Max 2 auto-bookings per day from unknowns without Raunak's explicit approval
+- Max 2 auto-bookings per day from unknowns without Raunk's explicit approval
 - NOVA never double-books — checks calendar before confirming any slot
 - All auto-bookings notify Raunak immediately — he can cancel within 30 min
 - Externals cannot request meetings longer than 1 hour without Raunak approval
 
 **Cost protection:**
 - Hard cap: 50 external API calls/day (prevents runaway costs from spam)
-- Raunak's usage: uncapped (it's his PA)
+- Raunk's usage: uncapped (it's his PA)
 - If daily cap hit: NOVA replies *"I'm unavailable right now, please try again tomorrow"*
 
 ---

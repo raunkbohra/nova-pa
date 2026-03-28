@@ -32,7 +32,7 @@ class EmailTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Manage Raunak's Gmail inbox.
+        return """Manage Raunk's Gmail inbox.
 Read, search, draft, and send emails.
 
 Examples:

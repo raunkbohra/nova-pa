@@ -31,7 +31,7 @@ class DriveTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Access Raunak's Google Drive — search files, read Docs, read Sheets.
+        return """Access Raunk's Google Drive — search files, read Docs, read Sheets.
 
 Actions:
 - search: Find files by name or content query

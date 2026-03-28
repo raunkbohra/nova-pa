@@ -1,6 +1,6 @@
 # NOVA — Full Capabilities Reference
 
-> NOVA is Raunak Bohra's WhatsApp-based executive assistant, powered by Claude Haiku 4.5.
+> NOVA is Raunk Bohra's WhatsApp-based executive assistant, powered by Claude Haiku 4.5.
 > All interaction happens via WhatsApp. Timezone: **NPT (Asia/Kathmandu, UTC+5:45)**.
 
 ---
@@ -73,7 +73,7 @@ Phone format: E.164 (e.g. +9779823377223).
 | "Remind me every Monday at 8am for weekly review" | Recurring (weekly) |
 
 **Persistence:** Reminders survive server restarts (stored in PostgreSQL via APScheduler).
-**Delivery:** Sends WhatsApp message to Raunak's phone at the scheduled time.
+**Delivery:** Sends WhatsApp message to Raunk's phone at the scheduled time.
 
 ---
 
@@ -197,7 +197,7 @@ Save URLs to read later, organized and summarized on demand.
 
 ## 13. External Contacts (Receptionist Mode)
 
-When anyone messages NOVA's WhatsApp number (not Raunak's), NOVA handles them:
+When anyone messages NOVA's WhatsApp number (not Raunk's), NOVA handles them:
 
 - Greets and qualifies (name, company, purpose)
 - **Strong signal** (investor, client, partner) → auto-books a meeting

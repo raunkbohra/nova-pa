@@ -34,7 +34,7 @@ class CalendarTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Manage Raunak's Google Calendar.
+        return """Manage Raunk's Google Calendar.
 Schedule, reschedule, cancel events, find free slots, list events.
 
 Examples:

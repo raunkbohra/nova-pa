@@ -36,7 +36,7 @@ async def test_commander_mode():
     async with AsyncSessionLocal() as session:
         # Set up Raunak context
         await set_context(session, "raunak_info", """
-        Name: Raunak Bohra
+        Name: Raunk Bohra
         Role: Founder, Entrepreneur
         Company: [TBD - edit with /set_context]
         Timezone: Asia/Kolkata (IST)

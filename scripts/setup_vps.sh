@@ -88,7 +88,7 @@ META_VERIFY_TOKEN=nova_verify_$(openssl rand -hex 8)
 META_ACCESS_TOKEN=EAA_FILL_ME_IN
 META_PHONE_NUMBER_ID=FILL_ME_IN
 
-# ============ Raunak's number ============
+# ============ Raunk's number ============
 RAUNAK_PHONE=+91XXXXXXXXXX
 
 # ============ Google APIs ============
