@@ -86,7 +86,9 @@ Rules:
 - Use NPT (Asia/Kathmandu, UTC+5:45) timezone by default — Raunk is based in Nepal
 - Always confirm before taking irreversible actions
 - If you can't do something, explain why clearly
-- CRITICAL: When asked to send a WhatsApp/message to a number, you MUST call the send_whatsapp tool. Never reply with text saying you sent it — actually call the tool."""
+- CRITICAL: When asked to send a WhatsApp/message to a number, you MUST call the send_whatsapp tool. Never reply with text saying you sent it — actually call the tool.
+- CRITICAL: If a tool returns ❌ FAILED or an error, tell Raunk the action FAILED. Never say "Done", "Sent", or "Scheduled" if the tool returned an error.
+- CRITICAL: Never confirm an action happened unless the tool explicitly returned success."""
 
 # System prompt for Receptionist Mode
 RECEPTIONIST_SYSTEM = """You are NOVA, Raunk Bohra's executive assistant.
@@ -281,23 +283,46 @@ JSON:"""
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin|triage|reading|read|summarize)\b",
+        r"\b(send|message|text|whatsapp|wa|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin|triage|reading|read|summarize|tell|let|ping|inform|notify|contact|msg)\b",
         re.IGNORECASE
     )
 
-    def _should_force_tool(self, messages: List[dict]) -> bool:
-        """Return True if the last user message is clearly an action request."""
+    # Patterns specifically indicating a WhatsApp send is needed
+    _WHATSAPP_PATTERNS = re.compile(
+        r"\b(send|message|text|whatsapp|wa|ping|tell|msg|inform|notify|let.*know)\b.*(\+\d{7,15}|raj|amit|priya|[a-z]+\s+a\s+(wa|whatsapp|message|msg))",
+        re.IGNORECASE
+    )
+
+    def _get_last_user_text(self, messages: List[dict]) -> str:
+        """Extract plain text from the last user message."""
         for msg in reversed(messages):
             if msg.get("role") == "user":
                 content = msg.get("content")
                 if isinstance(content, str):
-                    return bool(self._ACTION_PATTERNS.search(content))
-                # Vision messages (list) — check text block
+                    return content
                 if isinstance(content, list):
                     for block in content:
                         if isinstance(block, dict) and block.get("type") == "text":
-                            return bool(self._ACTION_PATTERNS.search(block.get("text", "")))
-        return False
+                            return block.get("text", "")
+        return ""
+
+    def _should_force_tool(self, messages: List[dict]) -> bool:
+        """Return True if the last user message is clearly an action request."""
+        text = self._get_last_user_text(messages)
+        return bool(self._ACTION_PATTERNS.search(text)) if text else False
+
+    def _needs_whatsapp(self, messages: List[dict]) -> bool:
+        """Return True if the request involves sending a WhatsApp message."""
+        text = self._get_last_user_text(messages)
+        if not text:
+            return False
+        # Explicit WhatsApp/message keywords
+        whatsapp_words = re.compile(
+            r"\b(whatsapp|wa|send.*message|message.*to|text.*to|ping|msg)\b", re.IGNORECASE
+        )
+        # Paired with a recipient indicator (phone number or "to [name]")
+        recipient = re.compile(r"(\+\d{7,15}|\bto\s+\w+|\braj\b|\bamit\b)", re.IGNORECASE)
+        return bool(whatsapp_words.search(text)) and bool(recipient.search(text))
 
     async def _call_claude(self, system: str, messages: List[dict],
                          tools: Optional[List[dict]] = None,
@@ -313,10 +338,18 @@ JSON:"""
         # Force tool use on first iteration for action requests so Haiku
         # doesn't hallucinate a "Done!" text reply instead of calling the tool.
         force_tool_first = is_commander and tools and self._should_force_tool(messages)
+        # Track if send_whatsapp has been called yet (to re-force if skipped)
+        whatsapp_sent = False
+        needs_whatsapp = is_commander and tools and self._needs_whatsapp(messages)
+
+        if force_tool_first:
+            logger.info(f"Force tool=any triggered for this request")
+        if needs_whatsapp:
+            logger.info(f"WhatsApp send detected — will enforce tool call")
 
         while iteration < self.max_iterations:
             iteration += 1
-            logger.debug(f"Claude iteration {iteration}")
+            logger.info(f"Claude iteration {iteration}/{self.max_iterations}")
 
             # Build request
             request_kwargs = {
@@ -328,10 +361,13 @@ JSON:"""
 
             if tools:
                 request_kwargs["tools"] = tools
-                # On the first iteration of an action request, require a tool call
                 if force_tool_first and iteration == 1:
                     request_kwargs["tool_choice"] = {"type": "any"}
-                    logger.debug("Forcing tool_choice=any on first iteration")
+                    logger.info("tool_choice=any on iteration 1")
+                # If WhatsApp is needed but not yet sent, keep forcing on iteration 2
+                elif needs_whatsapp and not whatsapp_sent and iteration == 2:
+                    request_kwargs["tool_choice"] = {"type": "any"}
+                    logger.info("tool_choice=any re-forced on iteration 2 (WhatsApp not yet sent)")
 
             # Call Claude
             response = await client.messages.create(**request_kwargs)
@@ -351,7 +387,7 @@ JSON:"""
             # If no tool calls, save usage and return
             if not tool_calls:
                 final_text = "\n".join(text_blocks).strip()
-                logger.debug(f"Claude response (final): {final_text[:100]}")
+                logger.info(f"Claude final response (no tool calls): {final_text[:120]}")
                 try:
                     async with _db.AsyncSessionLocal() as session:
                         await save_usage(session, total_input_tokens, total_output_tokens)
@@ -360,7 +396,8 @@ JSON:"""
                 return final_text
 
             # Process tool calls
-            logger.debug(f"Processing {len(tool_calls)} tool calls")
+            tool_names = [tc.name for tc in tool_calls]
+            logger.info(f"Tool calls: {tool_names}")
 
             # Add assistant response to messages
             messages.append({
@@ -371,31 +408,42 @@ JSON:"""
             # Execute tools and collect results
             tool_results = []
             for tool_call in tool_calls:
+                if tool_call.name == "send_whatsapp":
+                    whatsapp_sent = True
+
                 tool = get_tool(tool_call.name)
                 if not tool:
                     logger.warning(f"Unknown tool: {tool_call.name}")
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_call.id,
+                        "content": f"Error: Unknown tool '{tool_call.name}'"
+                    })
                     continue
 
                 try:
                     result = await tool.execute(**tool_call.input)
+                    content = str(result.data) if result.success else f"❌ FAILED: {result.error}"
+                    logger.info(f"Tool {tool_call.name} → {'OK' if result.success else 'FAILED'}: {content[:120]}")
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tool_call.id,
-                        "content": str(result.data) if result.success else f"Error: {result.error}"
+                        "content": content
                     })
                 except Exception as e:
-                    logger.error(f"Tool execution error: {e}")
+                    logger.error(f"Tool execution error ({tool_call.name}): {e}")
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tool_call.id,
-                        "content": f"Error: {str(e)}"
+                        "content": f"❌ FAILED: {str(e)}"
                     })
 
             # Add tool results to messages
-            messages.append({
-                "role": "user",
-                "content": tool_results
-            })
+            if tool_results:
+                messages.append({
+                    "role": "user",
+                    "content": tool_results
+                })
 
         # Max iterations reached
         logger.warning(f"Max iterations ({self.max_iterations}) reached")
