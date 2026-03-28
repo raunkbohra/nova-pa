@@ -283,7 +283,7 @@ JSON:"""
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|wa|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin|triage|reading|read|summarize|tell|let|ping|inform|notify|contact|msg)\b",
+        r"\b(send|message|text|whatsapp|wa|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin|triage|reading|read|summarize|tell|let|ping|inform|notify|contact|msg|lent|borrowed|borrow|loan|owe|owes|settle|paid back|gave me|lending|export)\b",
         re.IGNORECASE
     )
 
