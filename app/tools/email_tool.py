@@ -50,8 +50,8 @@ Examples:
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["list", "search", "read", "draft", "send", "delete"],
-                    "description": "Action: 'list' emails, 'search' by query, 'read' a specific email, 'draft' a new message, 'send' an email, or 'delete' an email (moves to trash by default)"
+                    "enum": ["list", "search", "read", "draft", "send", "delete", "triage"],
+                    "description": "Action: 'list' emails, 'search' by query, 'read' a specific email, 'draft' a new message, 'send' an email, 'delete' an email, or 'triage' to prioritize inbox"
                 },
                 "query": {
                     "type": "string",
@@ -112,6 +112,8 @@ Examples:
                 return await self._send_email(**kwargs)
             elif action == "delete":
                 return await self._delete_email(**kwargs)
+            elif action == "triage":
+                return await self._triage_inbox(**kwargs)
             else:
                 return ToolResult(
                     tool_name=self.name,
@@ -463,6 +465,67 @@ Examples:
         except Exception as e:
             logger.error(f"Failed to get message preview: {e}")
             return None
+
+    async def _triage_inbox(self, limit: int = 20, **kwargs) -> ToolResult:
+        """Fetch unread emails and score/sort by priority"""
+        try:
+            params = {"q": "is:unread in:inbox", "maxResults": min(limit, 20)}
+            result = await self._call_api("GET", "/users/me/messages", params=params)
+
+            if not result.get("messages"):
+                return ToolResult(
+                    tool_name=self.name,
+                    success=True,
+                    data={"emails": [], "count": 0, "summary": "Inbox is clear."}
+                )
+
+            # Keywords that bump priority
+            URGENT_SENDERS = ["sequoia", "matrix", "accel", "investor", "vc", "fund",
+                               "partner", "founder", "ceo", "cto", "md@", "gp@"]
+            URGENT_SUBJECTS = ["investment", "term sheet", "funding", "offer", "urgent",
+                                "contract", "deal", "closing", "revenue", "partnership"]
+            LOW_SENDERS = ["noreply", "no-reply", "newsletter", "notifications@",
+                           "mailer", "donotreply", "digest", "alerts@", "support@"]
+            LOW_SUBJECTS = ["unsubscribe", "newsletter", "weekly digest", "monthly update",
+                             "promotion", "sale", "offer", "% off", "coupon"]
+
+            def _score(from_addr: str, subject: str) -> tuple[int, str]:
+                f = from_addr.lower()
+                s = subject.lower()
+                if any(k in f for k in URGENT_SENDERS) or any(k in s for k in URGENT_SUBJECTS):
+                    return 3, "🔴 Urgent"
+                if any(k in f for k in LOW_SENDERS) or any(k in s for k in LOW_SUBJECTS):
+                    return 1, "⚪ Low"
+                return 2, "🟡 Normal"
+
+            emails = []
+            for msg in result["messages"]:
+                preview = await self._get_message_preview(msg["id"])
+                if not preview:
+                    continue
+                score, label = _score(preview.get("from", ""), preview.get("subject", ""))
+                preview["priority"] = label
+                preview["_score"] = score
+                emails.append(preview)
+
+            emails.sort(key=lambda e: e["_score"], reverse=True)
+            for e in emails:
+                del e["_score"]
+
+            urgent = sum(1 for e in emails if "Urgent" in e["priority"])
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={
+                    "emails": emails,
+                    "count": len(emails),
+                    "urgent_count": urgent,
+                    "summary": f"{len(emails)} unread — {urgent} urgent"
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to triage inbox: {e}")
+            return ToolResult(tool_name=self.name, success=False, error=str(e))
 
     async def _call_api(self, method: str, path: str, params=None, json=None):
         """Call Gmail API with OAuth token"""

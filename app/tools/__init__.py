@@ -50,6 +50,7 @@ from app.tools.sales_tool import SalesTool
 from app.tools.drive_tool import DriveTool
 from app.tools.tasks_tool import TasksTool
 from app.tools.expense_tool import ExpenseTool
+from app.tools.reading_list_tool import ReadingListTool
 
 register_tool(NotesTool())
 register_tool(CalendarTool())
@@ -66,3 +67,4 @@ register_tool(SalesTool())
 register_tool(DriveTool())
 register_tool(TasksTool())
 register_tool(ExpenseTool())
+register_tool(ReadingListTool())

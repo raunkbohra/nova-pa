@@ -56,6 +56,10 @@ Commands you understand:
 - "Show my tasks / add task / done with X" → tasks tool
 - "Spent Rs. X on ads today" → expense tool: log
 - "What's my actual profit this month?" → expense tool: profit
+- "Save this for later: [url]" → reading_list tool: save
+- "What's on my reading list?" → reading_list tool: list
+- "Summarize reading list item [N]" → reading_list tool: summarize(item_id=N)
+- "Triage my inbox" / "What needs attention in email?" → email tool: triage
 - [Image sent] → analyze using vision, describe contents, flag action items
 - /help /brief /tasks /sales /memory /cost → instant slash commands (no AI loop)
 
@@ -277,7 +281,7 @@ JSON:"""
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin)\b",
+        r"\b(send|message|text|whatsapp|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin|triage|reading|read|summarize)\b",
         re.IGNORECASE
     )
 
