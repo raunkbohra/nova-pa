@@ -177,7 +177,17 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
                 content = await handle_voice_note(media_id)
                 is_voice = True
                 if content:
-                    content = f"[Voice note transcribed] {content}"
+                    word_count = len(content.split())
+                    if word_count > 60:
+                        # Long voice note = brain dump — extract structure automatically
+                        content = (
+                            f"[Voice brain dump — {word_count} words transcribed. "
+                            f"Automatically extract and save: tasks to task list, ideas/insights to notes, "
+                            f"follow-ups (who to contact about what), key decisions made. "
+                            f"Then reply with a brief structured summary of what you extracted.]\n\n{content}"
+                        )
+                    else:
+                        content = f"[Voice note transcribed] {content}"
                 else:
                     content = "[Failed to transcribe voice note]"
         
@@ -203,9 +213,39 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
                 content = f"[Image received{': ' + caption if caption else ''}]"
         
         elif msg_type == "document":
-            # Document
+            # Document — download and pass to Claude for analysis
             media = msg.get("document", {})
-            content = f"[Document received: {media.get('filename', 'unknown')}]"
+            media_id = media.get("id")
+            filename = media.get("filename", "document")
+            mime_type = media.get("mime_type", "application/octet-stream")
+            caption = media.get("caption", "")
+
+            if media_id and mime_type == "application/pdf":
+                from app.whatsapp import download_media
+                import base64
+                doc_bytes = await download_media(media_id)
+                if doc_bytes:
+                    b64 = base64.standard_b64encode(doc_bytes).decode()
+                    instruction = caption if caption else (
+                        "Analyse this document. Summarise the key points in plain English, "
+                        "highlight any important dates, numbers, or deadlines, "
+                        "and flag anything I should action or be careful about."
+                    )
+                    content = [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": b64,
+                            },
+                        },
+                        {"type": "text", "text": instruction},
+                    ]
+                else:
+                    content = f"[PDF received: {filename} — could not download for analysis]"
+            else:
+                content = f"[Document received: {filename} ({mime_type}){' — ' + caption if caption else ''}]"
         
         elif msg_type == "button":
             # Button response

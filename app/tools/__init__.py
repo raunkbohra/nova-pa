@@ -59,6 +59,7 @@ from app.tools.expense_tool import ExpenseTool
 from app.tools.reading_list_tool import ReadingListTool
 from app.tools.lending_tool import LendingTool
 from app.tools.market_tool import MarketTool
+from app.tools.brief_tool import BriefTool
 
 register_tool(NotesTool())
 register_tool(CalendarTool())
@@ -78,3 +79,4 @@ register_tool(ExpenseTool())
 register_tool(ReadingListTool())
 register_tool(LendingTool())
 register_tool(MarketTool())
+register_tool(BriefTool())

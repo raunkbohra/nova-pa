@@ -61,6 +61,11 @@ Commands you understand:
 - "Summarize reading list item [N]" → reading_list tool: summarize(item_id=N)
 - "Triage my inbox" / "What needs attention in email?" → email tool: triage
 - [Image sent] → analyze using vision, describe contents, flag action items
+- [PDF/document sent] → analyze the document, summarise key points, flag deadlines and action items
+- [Voice brain dump] → extract tasks, ideas, follow-ups, decisions — save them, then confirm what was extracted
+- "I'm meeting X from Y in N mins" / "Brief me on my 3pm" → brief tool: meeting(name, company)
+- "Who is [person]?" / "Research [company]" before a meeting → brief tool: person or company action
+- "Explain [concept]" / "Teach me about [topic]" / "What is [business term]?" → give a sharp 5-point founder-focused explanation — no fluff, real-world examples, what it means for Raunk specifically
 - /help /brief /tasks /sales /memory /cost → instant slash commands (no AI loop)
 
 Sales (iwishbag):
@@ -287,7 +292,7 @@ JSON:"""
 
     # Keywords that indicate Raunk wants NOVA to take an action via a tool
     _ACTION_PATTERNS = re.compile(
-        r"\b(send|message|text|whatsapp|wa|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin|triage|reading|read|summarize|tell|let|ping|inform|notify|contact|msg|lent|borrowed|borrow|loan|owe|owes|settle|paid back|gave me|lending|export|price|stock|crypto|bitcoin|btc|eth|ethereum|nifty|sensex|market|reliance|tcs|infosys)\b",
+        r"\b(send|message|text|whatsapp|wa|remind|schedule|book|add|save|note|search|research|email|reply|delete|trash|remove|log|sales|revenue|orders|remember|recall|forget|drive|doc|sheet|find|spreadsheet|task|tasks|done|complete|expense|spent|cost|profit|margin|triage|reading|read|summarize|tell|let|ping|inform|notify|contact|msg|lent|borrowed|borrow|loan|owe|owes|settle|paid back|gave me|lending|export|price|stock|crypto|bitcoin|btc|eth|ethereum|nifty|sensex|market|reliance|tcs|infosys|brief|meeting|explain|teach|who is|research)\b",
         re.IGNORECASE
     )
 
