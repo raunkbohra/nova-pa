@@ -95,8 +95,8 @@ Examples:
         if action == "schedule":
             return await self._schedule_message(phone, message, **kwargs)
 
-        # Immediate send — try free-form first
-        success, error_code = await send_text(phone, message)
+        # Immediate send — try free-form first (registers msg_id for webhook fallback)
+        success, error_code = await send_text(phone, message, contact_name=contact_name)
         if success:
             return ToolResult(tool_name=self.name, success=True,
                               data={"status": "sent", "to": phone, "preview": message[:100]})

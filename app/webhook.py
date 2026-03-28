@@ -267,7 +267,10 @@ async def _handle_incoming_message(msg: dict, metadata: dict):
 async def _handle_status(status: dict):
     """
     Handle message status updates (delivery, read).
+    If error 131047 (24hr window expired), auto-retry via approved template.
     """
+    from app.whatsapp import send_template, _pending_delivery
+
     msg_id = status.get("id")
     recipient_id = status.get("recipient_id")
     status_value = status.get("status")  # "sent", "delivered", "read", "failed"
@@ -275,8 +278,26 @@ async def _handle_status(status: dict):
 
     if errors:
         logger.error(f"Message delivery FAILED: msg={msg_id}, to={recipient_id}, errors={errors}")
+        error_codes = [e.get("code") for e in errors]
+        if 131047 in error_codes:
+            pending = _pending_delivery.pop(msg_id, None)
+            if pending:
+                phone = pending["phone"]
+                message = pending["message"]
+                contact_name = pending.get("contact_name", "there")
+                logger.info(f"131047 on {phone} — retrying via template (contact_name={contact_name})")
+                ok = await send_template(phone, message, contact_name=contact_name)
+                if ok:
+                    logger.info(f"Template fallback succeeded for {phone}")
+                else:
+                    logger.error(f"Template fallback also failed for {phone}")
+            else:
+                logger.warning(f"131047 for {recipient_id} but no pending message tracked (msg={msg_id})")
     else:
         logger.info(f"Message status: {status_value} → {recipient_id} (msg={msg_id})")
+        # Clean up delivered messages from tracking dict
+        if status_value == "delivered":
+            _pending_delivery.pop(msg_id, None)
 
 
 # ============================================================================

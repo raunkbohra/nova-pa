@@ -13,12 +13,17 @@ logger = logging.getLogger(__name__)
 
 META_API_URL = "https://graph.facebook.com/v22.0"
 
+# Tracks recent outbound messages so the delivery-failure webhook can retry
+# with a template if error 131047 fires.
+# { msg_id: {"phone": str, "message": str, "contact_name": str} }
+_pending_delivery: dict[str, dict] = {}
+
 
 # ============================================================================
 # Send Message
 # ============================================================================
 
-async def send_text(phone: str, message: str) -> tuple[bool, int | None]:
+async def send_text(phone: str, message: str, contact_name: str = "there") -> tuple[bool, int | None]:
     """
     Send text message via Meta Cloud API.
 
@@ -61,6 +66,8 @@ async def send_text(phone: str, message: str) -> tuple[bool, int | None]:
             result = response.json()
             msg_id = result.get("messages", [{}])[0].get("id")
             logger.info(f"Text sent to {phone}, msg_id={msg_id}")
+            if msg_id:
+                _pending_delivery[msg_id] = {"phone": phone, "message": message, "contact_name": contact_name}
             return True, None
 
     except httpx.HTTPError as e:
