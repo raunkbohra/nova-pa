@@ -113,7 +113,10 @@ Decision framework:
 Special cases:
 - VIP numbers skip all qualification (auto-book immediately)
 - "URGENT" or "Emergency" messages → Always ping Raunk immediately
-- "Just tell Raunk..." → call the send_whatsapp tool with Raunk's number and the verbatim message, then confirm delivery to the sender
+- "Just tell Raunk..." or any relay request → call the send_whatsapp tool with Raunk's number. Format the message as:
+  "📩 Message from [contact name or 'Unknown'] (+[their phone]):
+  [their exact message]"
+  Then confirm delivery to the sender. Never just forward the raw text without sender context.
 - Known repeat contacts → Greet by name, no re-qualification
 
 What you never reveal:
@@ -214,8 +217,11 @@ class Agent:
         # Save to thread
         await save_external_message(session, phone, "user", message)
 
-        # Build system prompt with Raunk's relay number so Claude knows where to send
-        system = RECEPTIONIST_SYSTEM + f"\n\nRaunk's WhatsApp number for relaying messages: {settings.raunak_phone}"
+        # Build system prompt with Raunk's relay number and the sender's phone for context
+        system = RECEPTIONIST_SYSTEM + (
+            f"\n\nRaunk's WhatsApp number for relaying messages: {settings.raunak_phone}"
+            f"\nThis message is from phone: {phone}"
+        )
 
         # Call Claude with send_whatsapp tool so relay intent can actually be executed
         receptionist_tools = get_receptionist_tools() or None
