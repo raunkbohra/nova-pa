@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     openweather_api_key: Optional[str] = None
     news_api_key: Optional[str] = None
     perplexity_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None  # For Whisper voice transcription
+    openai_api_key: Optional[str] = None  # For Whisper voice transcription (legacy)
+    groq_api_key: Optional[str] = None   # For Groq Whisper (free, faster)
 
     # Database (PostgreSQL with asyncpg)
     database_url: str

@@ -12,54 +12,59 @@ from app.whatsapp import download_media
 
 logger = logging.getLogger(__name__)
 
-# OpenAI Whisper client — initialised lazily so a missing key doesn't crash startup
-_openai_client = None
+# Whisper client — lazy init, prefers Groq (free) over OpenAI
+_whisper_client = None
+_whisper_backend = None  # "groq" or "openai"
 
 
-def _get_openai_client():
-    global _openai_client
-    if _openai_client is None:
-        if not settings.openai_api_key:
-            raise RuntimeError(
-                "OPENAI_API_KEY not set — add it to .env to enable voice transcription"
-            )
+def _get_whisper_client():
+    global _whisper_client, _whisper_backend
+    if _whisper_client is None:
         from openai import OpenAI
-        _openai_client = OpenAI(api_key=settings.openai_api_key)
-    return _openai_client
+        if settings.groq_api_key:
+            _whisper_client = OpenAI(
+                api_key=settings.groq_api_key,
+                base_url="https://api.groq.com/openai/v1",
+            )
+            _whisper_backend = "groq"
+            logger.info("Whisper backend: Groq (free)")
+        elif settings.openai_api_key:
+            _whisper_client = OpenAI(api_key=settings.openai_api_key)
+            _whisper_backend = "openai"
+            logger.info("Whisper backend: OpenAI")
+        else:
+            raise RuntimeError(
+                "No transcription key set — add GROQ_API_KEY or OPENAI_API_KEY to .env"
+            )
+    return _whisper_client
 
 
 async def transcribe_voice_note(media_id: str) -> Optional[str]:
     """
-    Transcribe a WhatsApp voice note using OpenAI Whisper.
-    
-    Args:
-        media_id: Meta-provided media ID from WhatsApp
-        
-    Returns:
-        Transcribed text or None if transcription fails
+    Transcribe a WhatsApp voice note.
+    Uses Groq Whisper if GROQ_API_KEY is set, falls back to OpenAI Whisper.
     """
     try:
-        # Download audio from Meta servers
         audio_data = await download_media(media_id)
-        
         if not audio_data:
             logger.error(f"Failed to download media: {media_id}")
             return None
-        
-        # Transcribe with Whisper
+
         audio_file = io.BytesIO(audio_data)
-        audio_file.name = f"voice_{media_id}.ogg"  # Meta sends OGG format
-        
-        transcript = _get_openai_client().audio.transcriptions.create(
-            model="whisper-1",
+        audio_file.name = f"voice_{media_id}.ogg"
+
+        client = _get_whisper_client()
+        model = "whisper-large-v3-turbo" if _whisper_backend == "groq" else "whisper-1"
+
+        transcript = client.audio.transcriptions.create(
+            model=model,
             file=audio_file,
         )
-        
+
         text = transcript.text.strip()
-        logger.info(f"Transcribed voice note: {text[:50]}...")
-        
+        logger.info(f"Transcribed via {_whisper_backend}: {text[:80]}...")
         return text
-        
+
     except Exception as e:
         logger.error(f"Failed to transcribe voice note: {e}")
         return None
