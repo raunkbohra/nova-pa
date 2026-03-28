@@ -84,7 +84,7 @@ async def _send_morning_briefing():
     # --- Weather ---
     try:
         weather = WeatherTool()
-        result = await weather.execute(city="Kathmandu")
+        result = await weather.execute(location="Kathmandu")
         if result.success and result.data:
             d = result.data
             temp = d.get("temperature", "?")
