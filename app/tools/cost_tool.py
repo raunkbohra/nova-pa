@@ -50,6 +50,12 @@ Examples:
     async def execute(self, days: int = 30, **kwargs) -> ToolResult:
         try:
             days = max(1, min(days, 365))
+            if _db.AsyncSessionLocal is None:
+                return ToolResult(
+                    tool_name=self.name,
+                    success=False,
+                    error="Database not ready yet — the app is still starting up. Please try again in a moment."
+                )
             async with _db.AsyncSessionLocal() as session:
                 stats = await get_usage_stats(session, days)
 

@@ -139,7 +139,7 @@ async def handle_slash_command(text: str) -> Optional[str]:
                 f"*API Cost (last 30 days)*\n"
                 f"• Requests: {d.get('total_requests', 0):,}\n"
                 f"• Tokens: {d.get('total_input', 0):,} in / {d.get('total_output', 0):,} out\n"
-                f"• Est. cost: ${d.get('estimated_cost_usd', 0):.4f} USD"
+                f"• Est. cost: ${d.get('total_cost_usd', 0):.4f} USD"
             )
         except Exception as e:
             return f"Couldn't load cost: {e}"
